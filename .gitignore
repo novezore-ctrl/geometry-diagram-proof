@@ -40,3 +40,5 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/dist-static/
+/static/dist-static/
