@@ -11,12 +11,16 @@ export function GeometryWorkspace() {
   const inputRef = useRef<HTMLInputElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const dragging = useRef<string | null>(null);
+  const selecting = useRef(false);
+  const selectionStart = useRef<{ x: number; y: number } | null>(null);
   const [result, setResult] = useState<Detection>(EMPTY);
   const [tool, setTool] = useState<Tool>("move");
   const [firstPoint, setFirstPoint] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [fileName, setFileName] = useState("");
   const [hasImage, setHasImage] = useState(false);
+  const [hasAnalyzed, setHasAnalyzed] = useState(false);
+  const [selection, setSelection] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [message, setMessage] = useState("导入清晰的印刷二维几何图，或先运行示例。");
   const [showBoxes, setShowBoxes] = useState(true);
 
@@ -53,7 +57,11 @@ export function GeometryWorkspace() {
       ctx.font = "600 16px Arial"; ctx.lineWidth = 4; ctx.strokeStyle = "white"; ctx.strokeText(point.label, point.x + 10, point.y - 10);
       ctx.fillStyle = "#14283e"; ctx.fillText(point.label, point.x + 10, point.y - 10);
     }
-  }, [firstPoint, result, showBoxes]);
+    if (selection && !hasAnalyzed) {
+      ctx.save(); ctx.fillStyle = "#1769d21c"; ctx.strokeStyle = "#1769d2"; ctx.lineWidth = 2; ctx.setLineDash([8, 5]);
+      ctx.fillRect(selection.x, selection.y, selection.w, selection.h); ctx.strokeRect(selection.x, selection.y, selection.w, selection.h); ctx.restore();
+    }
+  }, [firstPoint, result, showBoxes, selection, hasAnalyzed]);
 
   useEffect(() => renderCanvas(), [renderCanvas]);
   useEffect(() => { if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => undefined); }, []);
@@ -73,10 +81,12 @@ export function GeometryWorkspace() {
 
   const importFile = (file?: File) => {
     if (!file) return;
+    setHasAnalyzed(false); setSelection(null); setResult(EMPTY);
     const reader = new FileReader(); reader.onload = () => loadImage(String(reader.result), file.name); reader.readAsDataURL(file);
   };
 
   const sample = () => {
+    setHasAnalyzed(false); setSelection(null); setResult(EMPTY);
     const c = document.createElement("canvas"); c.width = 900; c.height = 620;
     const ctx = c.getContext("2d"); if (!ctx) return;
     ctx.fillStyle = "white"; ctx.fillRect(0, 0, c.width, c.height); ctx.strokeStyle = "#111"; ctx.fillStyle = "#111"; ctx.lineWidth = 4; ctx.font = "32px Georgia";
@@ -89,12 +99,15 @@ export function GeometryWorkspace() {
 
   const analyze = () => {
     const image = imageRef.current, visible = canvasRef.current; if (!image || !visible) return;
+    if (!selection || selection.w < 12 || selection.h < 12) { setMessage("璇峰厛鍦ㄥ浘鐗囦笂鎷栧嚭闇€瑙ｆ瀽鐨勫尯鍩燂紒"); return; }
     setBusy(true); setMessage("正在本机寻找线段、交点、圆和标签位置……");
     setTimeout(() => {
-      const c = document.createElement("canvas"); c.width = visible.width; c.height = visible.height;
+      const c = document.createElement("canvas"); c.width = Math.round(selection.w); c.height = Math.round(selection.h);
       const ctx = c.getContext("2d", { willReadFrequently: true }); if (!ctx) return;
-      ctx.fillStyle = "white"; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(image, 0, 0, c.width, c.height);
-      const next = detectDiagram(ctx.getImageData(0, 0, c.width, c.height)); setResult(next); setBusy(false);
+      ctx.fillStyle = "white"; ctx.fillRect(0, 0, c.width, c.height); ctx.drawImage(image, selection.x, selection.y, selection.w, selection.h, 0, 0, c.width, c.height);
+      const next = detectDiagram(ctx.getImageData(0, 0, c.width, c.height));
+      const mapped = { ...next, points: next.points.map((p) => ({ ...p, x: p.x + selection.x, y: p.y + selection.y })), circles: next.circles.map((circle) => ({ ...circle, cx: circle.cx + selection.x, cy: circle.cy + selection.y })), labels: next.labels.map((label) => ({ ...label, x: label.x + selection.x, y: label.y + selection.y })) };
+      setResult(mapped); setHasAnalyzed(true); setBusy(false);
       setMessage(`检测完成：${next.points.length}个点、${next.segments.length}条连接、${next.circles.length}个圆候选、${next.labels.length}个标签框。蓝色结果需要你确认。`);
     }, 50);
   };
@@ -107,7 +120,11 @@ export function GeometryWorkspace() {
 
   const pointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (!imageRef.current) return;
-    const { x, y } = coordinates(event), hit = nearest(x, y);
+    const { x, y } = coordinates(event);
+    if (!hasAnalyzed) {
+      selecting.current = true; selectionStart.current = { x, y }; setSelection({ x, y, w: 0, h: 0 }); event.currentTarget.setPointerCapture(event.pointerId); return;
+    }
+    const hit = nearest(x, y);
     if (tool === "point") {
       const point: PointNode = { id: `P${Date.now()}`, label: `P${result.points.length + 1}`, x, y, confidence: 1, source: "manual" };
       setResult((r) => ({ ...r, points: [...r.points, point] })); setMessage("已补点，可在右侧修改名称。");
@@ -128,11 +145,20 @@ export function GeometryWorkspace() {
   };
 
   const pointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (selecting.current && selectionStart.current) {
+      const { x, y } = coordinates(event), start = selectionStart.current;
+      setSelection({ x: Math.min(start.x, x), y: Math.min(start.y, y), w: Math.abs(x - start.x), h: Math.abs(y - start.y) }); return;
+    }
     if (!dragging.current) return;
     const { x, y } = coordinates(event), id = dragging.current, canvas = canvasRef.current!;
     setResult((r) => ({ ...r, points: r.points.map((p) => p.id === id ? { ...p, x: Math.max(0, Math.min(canvas.width, x)), y: Math.max(0, Math.min(canvas.height, y)), source: "manual" } : p) }));
   };
   const pointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (selecting.current) {
+      selecting.current = false; selectionStart.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      setMessage("选区已确定，可以开始识别。"); return;
+    }
     if (!dragging.current) return; dragging.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     setMessage("点的位置已校正。");
