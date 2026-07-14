@@ -56,7 +56,7 @@ export function GeometryWorkspace() {
   }, [firstPoint, result, showBoxes]);
 
   useEffect(() => renderCanvas(), [renderCanvas]);
-  useEffect(() => { if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => undefined); }, []);
+  useEffect(() => { if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => undefined); }, []);
 
   const loadImage = useCallback((src: string, name: string) => {
     const image = new Image();
