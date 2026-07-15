@@ -48,7 +48,9 @@ function detectLines(binary: Uint8Array, width: number, height: number) {
   let maxVote = 0;
   for (const vote of acc) maxVote = Math.max(maxVote, vote);
   const peaks: Array<{ t: number; r: number; vote: number }> = [];
-  const cutoff = Math.max(15, maxVote * .27);
+  // Short text strokes often vote weakly in the Hough space. Keep only the
+  // strongest structural lines so labels do not become fake geometry edges.
+  const cutoff = Math.max(22, maxVote * .42);
   for (let t = 0; t < angles; t += 1) for (let r = 0; r < rhoBins; r += 1) {
     const vote = acc[t * rhoBins + r]; if (vote >= cutoff) peaks.push({ t, r, vote });
   }
@@ -67,7 +69,7 @@ function detectLines(binary: Uint8Array, width: number, height: number) {
       if (projection[i - 1] - projection[runStart] > end - start) { start = projection[runStart]; end = projection[i - 1]; }
       runStart = i;
     }
-    if (end - start < Math.min(width, height) * .15) continue;
+    if (end - start < Math.min(width, height) * .24) continue;
     const baseX = rho * c, baseY = rho * s;
     const line: Line = { theta: peak.t * angleStep, x1: baseX - start * s, y1: baseY + start * c, x2: baseX - end * s, y2: baseY + end * c, confidence: Math.min(.99, peak.vote / maxVote) };
     const duplicate = lines.some((other) => {
@@ -77,7 +79,7 @@ function detectLines(binary: Uint8Array, width: number, height: number) {
       return angle < 5 && Math.min(direct, reverse) < 36;
     });
     if (!duplicate) lines.push(line);
-    if (lines.length === 16) break;
+    if (lines.length === 12) break;
   }
   return lines;
 }
@@ -105,7 +107,10 @@ function topology(lines: Line[], width: number, height: number) {
     if (group) { group.x = (group.x * group.n + p.x) / (group.n + 1); group.y = (group.y * group.n + p.y) / (group.n + 1); group.confidence = Math.max(group.confidence, p.confidence); group.n += 1; }
     else groups.push({ ...p, n: 1 });
   }
-  const points: PointNode[] = groups.filter((g) => g.n > 1 || g.confidence > .45).map((g, i) => ({ id: `P${i + 1}`, label: `P${i + 1}`, x: g.x, y: g.y, confidence: Math.min(.99, g.confidence + Math.min(.15, g.n * .03)), source: "detected" }));
+  // A true vertex is normally supported by at least two observations:
+  // two line endpoints, or an endpoint plus an intersection. Single Hough
+  // endpoints are usually text strokes and are intentionally discarded.
+  const points: PointNode[] = groups.filter((g) => g.n > 1).map((g, i) => ({ id: `P${i + 1}`, label: `P${i + 1}`, x: g.x, y: g.y, confidence: Math.min(.99, g.confidence + Math.min(.15, g.n * .03)), source: "detected" }));
   const segments: SegmentEdge[] = [];
   for (const line of lines) {
     const dx = line.x2 - line.x1, dy = line.y2 - line.y1, len2 = dx * dx + dy * dy || 1;
