@@ -43,3 +43,6 @@ next-env.d.ts
 /dist-static/
 /static/dist-static/
 /geometry-diagram-proof.tar.gz
+/ml/data/
+/ml/checkpoints/
+__pycache__/
