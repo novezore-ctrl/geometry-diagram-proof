@@ -11,12 +11,11 @@ and exports a JSON graph. The web app can later load an exported Core ML model.
 
 ## Local training
 
-Create an isolated Python environment in WSL, install `ml/requirements.txt`,
-then run:
+Create an isolated Python environment in the project directory, then run:
 
 ```bash
-python ml/synthetic_dataset.py --out ml/data/synthetic --count 800
-python ml/train.py --data ml/data/synthetic --epochs 5 --out ml/checkpoints/geometry_unet.pt
+bash scripts/setup_wsl_home_venv.sh
+bash scripts/run_ml_smoke_wsl.sh
 ```
 
 Synthetic data only verifies that the pipeline works. Real accuracy requires
