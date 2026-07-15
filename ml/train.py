@@ -38,9 +38,12 @@ def synthetic_pairs(root: Path) -> list[tuple[Path, Path]]:
     return [(p, p.with_name(p.stem + ".mask.png")) for p in sorted(root.glob("*.png")) if not p.name.endswith(".mask.png") and p.with_name(p.stem + ".mask.png").exists()]
 
 
-def real_pairs(root: Path) -> list[tuple[Path, Path]]:
+def real_pairs(root: Path, split: str | None = None) -> list[tuple[Path, Path]]:
     image_dir, mask_dir = root / "images", root / "masks"
-    return [(p, mask_dir / p.name) for p in sorted(image_dir.glob("*.png")) if (mask_dir / p.name).exists()]
+    pairs = [(p, mask_dir / p.name) for p in sorted(image_dir.glob("*.png")) if (mask_dir / p.name).exists()]
+    if split:
+        pairs = [(p, m) for p, m in pairs if p.stem.startswith(split + "_")]
+    return pairs
 
 
 def split_pairs(pairs: list[tuple[Path, Path]], val_ratio: float, seed: int):
@@ -92,7 +95,12 @@ def main() -> None:
     val_sets = [PairDataset(syn_val)]
     real_count = 0
     if args.real_data:
-        real_train, real_val = split_pairs(real_pairs(args.real_data), 0.2, 43)
+        named_train = real_pairs(args.real_data, "train")
+        named_val = real_pairs(args.real_data, "val")
+        if named_train and named_val:
+            real_train, real_val = named_train, named_val
+        else:
+            real_train, real_val = split_pairs(real_pairs(args.real_data), 0.2, 43)
         real_count = len(real_train) + len(real_val)
         if real_train:
             real_set = PairDataset(real_train)
