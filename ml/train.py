@@ -56,6 +56,8 @@ def metrics(model, loader, device):
     correct = total_pixels = 0
     intersection = torch.zeros(len(CLASSES), dtype=torch.long)
     union = torch.zeros(len(CLASSES), dtype=torch.long)
+    predicted = torch.zeros(len(CLASSES), dtype=torch.long)
+    actual = torch.zeros(len(CLASSES), dtype=torch.long)
     with torch.no_grad():
         for images, masks in loader:
             pred = model(images.to(device)).argmax(1).cpu()
@@ -65,9 +67,13 @@ def metrics(model, loader, device):
                 p, m = pred == cls, masks == cls
                 intersection[cls] += int((p & m).sum())
                 union[cls] += int((p | m).sum())
+                predicted[cls] += int(p.sum())
+                actual[cls] += int(m.sum())
     valid = union > 0
     iou = intersection[valid].float() / union[valid].float().clamp_min(1)
-    return correct / max(1, total_pixels), iou.mean().item(), iou.tolist()
+    precision = intersection.float() / predicted.float().clamp_min(1)
+    recall = intersection.float() / actual.float().clamp_min(1)
+    return correct / max(1, total_pixels), iou.mean().item(), iou.tolist(), precision.tolist(), recall.tolist()
 
 
 def main() -> None:
@@ -113,8 +119,16 @@ def main() -> None:
             loss.backward()
             optimizer.step()
             total += loss.detach().item()
-        acc, mean_iou, ious = metrics(model, val_loader, device)
-        print(f"epoch {epoch + 1}/{args.epochs} loss={total / max(1, len(loader)):.4f} val_pixel_acc={acc:.4f} val_mean_iou={mean_iou:.4f} iou={','.join(f'{x:.3f}' for x in ious)}")
+        acc, mean_iou, ious, precision, recall = metrics(model, val_loader, device)
+        # Class ids: 1=solid line, 3=curve, 4=point. These are more useful
+        # than whole-image accuracy after the user has cropped a region.
+        print(
+            f"epoch {epoch + 1}/{args.epochs} loss={total / max(1, len(loader)):.4f} "
+            f"val_pixel_acc={acc:.4f} val_mean_iou={mean_iou:.4f} "
+            f"line_p={precision[1]:.3f} line_r={recall[1]:.3f} "
+            f"point_p={precision[4]:.3f} point_r={recall[4]:.3f} "
+            f"curve_p={precision[3]:.3f} curve_r={recall[3]:.3f}"
+        )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"model": model.state_dict(), "classes": CLASSES, "size": SIZE}, args.out)
     print(f"saved {args.out}")
