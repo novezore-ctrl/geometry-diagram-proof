@@ -29,7 +29,7 @@ def main() -> None:
     for epoch in range(args.epochs):
         model.train(); total = 0.0
         for images, masks in loader:
-            images, masks = images.to(device), masks.to(device); optimizer.zero_grad(); loss = loss_fn(model(images), masks); loss.backward(); optimizer.step(); total += float(loss)
+            images, masks = images.to(device), masks.to(device); optimizer.zero_grad(); loss = loss_fn(model(images), masks); loss.backward(); optimizer.step(); total += loss.detach().item()
         print(f"epoch {epoch + 1}/{args.epochs} loss={total / max(1, len(loader)):.4f}")
     args.out.parent.mkdir(parents=True, exist_ok=True); torch.save({"model": model.state_dict(), "classes": CLASSES}, args.out); print(f"saved {args.out}")
 
