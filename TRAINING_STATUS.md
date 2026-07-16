@@ -392,3 +392,16 @@ is empty, instead of presenting raw P1/P2 candidates as a valid recognition.
 On the already-open user crop, inserting the question and rerunning immediately
 restored 7 points, 10 segments, 0 arrows, and 4 point-on-line relations in
 267 ms through Windows WebGPU.
+
+### Zoom-invariant correction overlay
+
+The correction overlay previously shared the photo canvas and was enlarged by
+the same CSS scale. At high zoom this made point handles, labels, attachment
+rings, and segment strokes cover the source diagram. Overlay strokes, point
+handles, labels, arrowheads, selection dashes, and point hit targets now receive
+the inverse display scale. Their positions still follow the photo, but their
+screen size stays constant while the source image is enlarged.
+
+The production build and live Windows browser test passed at 100% and 249%.
+Figure 2 remained at 7 points, 10 segments, 0 arrows, and 4 point-on-line
+relations, and the browser produced no console errors.

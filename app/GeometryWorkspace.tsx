@@ -24,6 +24,12 @@ function drawOrientedImage(ctx: CanvasRenderingContext2D, image: HTMLImageElemen
   ctx.restore();
 }
 
+function overlayUnitFor(canvas: HTMLCanvasElement, fitWidth: number, fitHeight: number, zoom: number) {
+  const scaleX = fitWidth > 0 ? fitWidth * zoom / canvas.width : 1;
+  const scaleY = fitHeight > 0 ? fitHeight * zoom / canvas.height : 1;
+  return 1 / Math.max(.01, Math.min(scaleX, scaleY));
+}
+
 export function GeometryWorkspace() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -69,54 +75,59 @@ export function GeometryWorkspace() {
     ctx.fillStyle = "white"; ctx.fillRect(0, 0, canvas.width, canvas.height);
     drawOrientedImage(ctx, image, canvas.width, canvas.height, rotation);
     const byId = new Map(result.points.map((point) => [point.id, point]));
+    // The photo follows CSS zoom, while annotation thickness, handles and text
+    // stay the same size on screen so the enlarged source remains readable.
+    const overlayUnit = overlayUnitFor(canvas, fitSize.width, fitSize.height, zoom);
     ctx.lineCap = "round";
     for (const segment of result.segments) {
       const a = byId.get(segment.a), b = byId.get(segment.b); if (!a || !b) continue;
       ctx.strokeStyle = segment.source === "manual" ? "#0b9870" : "#1769d2";
-      ctx.lineWidth = segment.source === "manual" ? 4 : 3;
+      ctx.lineWidth = (segment.source === "manual" ? 3 : 2.25) * overlayUnit;
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
     for (const arrow of result.arrows) {
       const from = arrow.fromPoint ? byId.get(arrow.fromPoint) : null;
       const startX = from?.x ?? arrow.tailX, startY = from?.y ?? arrow.tailY;
       const confirmed = confirmedArrowIds.includes(arrow.id) || arrow.source === "manual";
-      ctx.strokeStyle = confirmed ? "#0b9870" : "#d45a2a88"; ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = confirmed ? 4 : 3;
+      ctx.strokeStyle = confirmed ? "#0b9870" : "#d45a2a88"; ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = (confirmed ? 3 : 2.25) * overlayUnit;
       if (confirmed) { ctx.beginPath(); ctx.moveTo(startX, startY); ctx.lineTo(arrow.x, arrow.y); ctx.stroke(); }
-      const headLength = confirmed ? 17 : 11, headWidth = confirmed ? 8 : 5;
+      const headLength = (confirmed ? 15 : 10) * overlayUnit, headWidth = (confirmed ? 7 : 5) * overlayUnit;
       const baseX = arrow.x - arrow.directionX * headLength, baseY = arrow.y - arrow.directionY * headLength;
       const sideX = -arrow.directionY * headWidth, sideY = arrow.directionX * headWidth;
       ctx.beginPath(); ctx.moveTo(arrow.x, arrow.y); ctx.lineTo(baseX + sideX, baseY + sideY); ctx.lineTo(baseX - sideX, baseY - sideY); ctx.closePath(); ctx.fill();
     }
     for (const attachment of result.attachments) {
       const junction = byId.get(attachment.junction); if (!junction) continue;
-      ctx.strokeStyle = attachment.position.kind === "division" ? "#0b9870" : "#e99137"; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(junction.x, junction.y, 12, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = attachment.position.kind === "division" ? "#0b9870" : "#e99137"; ctx.lineWidth = 2.25 * overlayUnit;
+      ctx.beginPath(); ctx.arc(junction.x, junction.y, 10 * overlayUnit, 0, Math.PI * 2); ctx.stroke();
     }
     for (const circle of result.circles) {
       const confirmed = confirmedCircleIds.includes(circle.id) || circle.source === "manual";
-      ctx.strokeStyle = confirmed ? "#0b9870" : "#9a55d888"; ctx.lineWidth = confirmed ? 4 : 3; ctx.setLineDash(confirmed ? [] : [8, 6]);
+      ctx.strokeStyle = confirmed ? "#0b9870" : "#9a55d888"; ctx.lineWidth = (confirmed ? 3 : 2.25) * overlayUnit; ctx.setLineDash(confirmed ? [] : [8 * overlayUnit, 6 * overlayUnit]);
       ctx.beginPath(); ctx.arc(circle.cx, circle.cy, circle.r, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
     }
     if (showBoxes) for (const label of result.labels) {
-      ctx.strokeStyle = "#ed8a2d"; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
-      ctx.strokeRect(label.x - 2, label.y - 2, label.w + 4, label.h + 4); ctx.setLineDash([]);
+      const padding = 2 * overlayUnit;
+      ctx.strokeStyle = "#ed8a2d"; ctx.lineWidth = 1.5 * overlayUnit; ctx.setLineDash([5 * overlayUnit, 4 * overlayUnit]);
+      ctx.strokeRect(label.x - padding, label.y - padding, label.w + padding * 2, label.h + padding * 2); ctx.setLineDash([]);
     }
     for (const point of result.points) {
       ctx.fillStyle = point.id === firstPoint ? "#ed315a" : point.source === "manual" ? "#0b9870" : "#1769d2";
-      ctx.strokeStyle = "white"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(point.x, point.y, point.id === firstPoint ? 9 : 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.font = "600 16px Arial"; ctx.lineWidth = 4; ctx.strokeStyle = "white"; ctx.strokeText(point.label, point.x + 10, point.y - 10);
-      ctx.fillStyle = "#14283e"; ctx.fillText(point.label, point.x + 10, point.y - 10);
+      ctx.strokeStyle = "white"; ctx.lineWidth = 2.5 * overlayUnit; ctx.beginPath(); ctx.arc(point.x, point.y, (point.id === firstPoint ? 8 : 6.5) * overlayUnit, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.font = `600 ${15 * overlayUnit}px Arial`; ctx.lineWidth = 3 * overlayUnit; ctx.strokeStyle = "white"; ctx.strokeText(point.label, point.x + 9 * overlayUnit, point.y - 9 * overlayUnit);
+      ctx.fillStyle = "#14283e"; ctx.fillText(point.label, point.x + 9 * overlayUnit, point.y - 9 * overlayUnit);
     }
     if (selection && !hasAnalyzed) {
-      ctx.save(); ctx.fillStyle = "#1769d21c"; ctx.strokeStyle = "#1769d2"; ctx.lineWidth = 2; ctx.setLineDash([8, 5]);
+      ctx.save(); ctx.fillStyle = "#1769d21c"; ctx.strokeStyle = "#1769d2"; ctx.lineWidth = 2 * overlayUnit; ctx.setLineDash([8 * overlayUnit, 5 * overlayUnit]);
       ctx.fillRect(selection.x, selection.y, selection.w, selection.h); ctx.strokeRect(selection.x, selection.y, selection.w, selection.h); ctx.restore();
     }
-  }, [confirmedArrowIds, confirmedCircleIds, firstPoint, result, rotation, showBoxes, selection, hasAnalyzed]);
+  }, [confirmedArrowIds, confirmedCircleIds, firstPoint, result, rotation, showBoxes, selection, hasAnalyzed, fitSize, zoom]);
 
   useEffect(() => renderCanvas(), [renderCanvas]);
   useEffect(() => {
-    setMobileStatus(inspectClientStatus());
+    const statusFrame = requestAnimationFrame(() => setMobileStatus(inspectClientStatus()));
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => undefined);
+    return () => cancelAnimationFrame(statusFrame);
   }, []);
 
   const fitCanvas = useCallback(() => {
@@ -307,7 +318,11 @@ export function GeometryWorkspace() {
     const canvas = canvasRef.current!, rect = canvas.getBoundingClientRect();
     return viewportToCanvasPoint(clientX, clientY, rect, canvas.width, canvas.height);
   };
-  const nearest = (x: number, y: number) => result.points.map((p) => ({ p, d: Math.hypot(p.x - x, p.y - y) })).filter((v) => v.d < 25).sort((a, b) => a.d - b.d)[0]?.p;
+  const nearest = (x: number, y: number) => {
+    const canvas = canvasRef.current;
+    const hitRadius = canvas ? 22 * overlayUnitFor(canvas, fitSize.width, fitSize.height, zoom) : 22;
+    return result.points.map((p) => ({ p, d: Math.hypot(p.x - x, p.y - y) })).filter((v) => v.d < hitRadius).sort((a, b) => a.d - b.d)[0]?.p;
+  };
   const updateTopology = (change: (current: Detection) => Detection) => setResult((current) => {
     const next = change(current);
     return { ...next, attachments: deriveAttachments(next.points, next.segments, current.attachments) };
@@ -515,7 +530,7 @@ export function GeometryWorkspace() {
         </div>
         <div className="zoom-toolbar" data-testid="zoom-toolbar">
           <div className="toolbar-actions"><button aria-label="缩小" disabled={!hasImage || zoom <= MIN_ZOOM} onClick={() => setZoomAt(zoomRef.current / 1.2)}>−</button><output data-testid="zoom-level">{Math.round(zoom * 100)}%</output><button aria-label="放大" disabled={!hasImage || zoom >= MAX_ZOOM} onClick={() => setZoomAt(zoomRef.current * 1.2)}>＋</button><button className="fit-button" disabled={!hasImage} onClick={resetZoom}>适应画布</button><span className="toolbar-divider"/><button className="rotate-button" aria-label="向左旋转90度" disabled={!hasImage || busy} onClick={() => rotateImage(-1)}>↶ 左转</button><output className="rotation-level" data-testid="rotation-level">方向 {rotation}°</output><button className="rotate-button" aria-label="向右旋转90度" disabled={!hasImage || busy} onClick={() => rotateImage(1)}>右转 ↷</button><button className="clear-button" disabled={!hasImage || busy || !hasRecognition} onClick={clearAllDetections}>清除全部识别</button></div>
-          <small>电脑滚轮缩放；手机/平板双指缩放并移动</small>
+          <small>电脑滚轮缩放；手机/平板双指缩放并移动；标记大小保持不变</small>
         </div>
         <div ref={stageRef} className={`canvas-stage ${hasImage ? "has-image" : "empty"}`} onWheel={wheelZoom}>
           {!hasImage && <button className="empty-prompt" onClick={() => inputRef.current?.click()}><b>＋</b><strong>选择一道几何题图片</strong><small>正面拍摄、背景干净、线条清楚</small></button>}
