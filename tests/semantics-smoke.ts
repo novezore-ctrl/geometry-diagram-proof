@@ -1,4 +1,5 @@
 import { buildGeometryDocument, toGptShareText } from "../app/geometryExport";
+import { FIGURE2_QUESTION } from "../app/figure2Case";
 import { deriveAttachments, detectorRasterSize, detectDiagram, viewportToCanvasPoint, type PointNode, type SegmentEdge } from "../app/vision";
 
 const normalizedLargeCrop = detectorRasterSize(2200, 1100);
@@ -108,14 +109,17 @@ const problemResult = {
   attachments: problemAttachments,
   circles: [], labels: [], threshold: 0,
 };
-const problemQuestion = "连接BE，∠BED的平分线交直线CD于点G。";
-const problemDocument = buildGeometryDocument(problemResult, { questionTitle: "图2", questionText: problemQuestion, sourceImageAttached: true });
-const problemShare = toGptShareText(problemResult, { questionTitle: "图2", questionText: problemQuestion, sourceImageAttached: true });
+if (!FIGURE2_QUESTION.includes("∠A=∠ACD") || FIGURE2_QUESTION.includes("∠AGD")) throw new Error("图2本地识别提示仍把 ACD 错写成 AGD");
+const problemContext = { questionTitle: "图2", questionText: FIGURE2_QUESTION, sourceImageAttached: true, includeQuestionText: false };
+const problemDocument = buildGeometryDocument(problemResult, problemContext);
+const problemShare = toGptShareText(problemResult, problemContext);
 if (!problemDocument.drawingContract.mustRenderSegmentLabels.includes("E—G")) throw new Error("必画线清单漏掉 E-G");
 if (problemDocument.primitives.rays.length !== 0 || problemDocument.excludedUnconfirmedCandidates.arrows.length !== 2) throw new Error("未确认箭头没有被隔离");
-if (!problemShare.includes("逐条必画清单：E—G") || !problemShare.includes(problemQuestion)) throw new Error("分享内容没有同时携带题干和 E-G 必画约束");
-if (problemDocument.schema !== "geometry-diagram/v4" || !problemDocument.sourceImage.attachedWithThisShare) throw new Error("分享 JSON 没有记录原题图片附件");
-if (!problemShare.includes("多模态看图能力") || !problemShare.includes("原始题图") || !problemShare.includes("不是用文字说明或 JSON 替代原图")) throw new Error("分享说明没有要求 GPT 联合原图和详细描述理解题目");
+if (!problemShare.includes("逐条必画清单：E—G")) throw new Error("分享内容漏掉 E-G 必画约束");
+if (problemShare.includes(FIGURE2_QUESTION) || problemShare.includes("∠A=∠ACD")) throw new Error("分享文字仍重复发送本地题干转写");
+if (JSON.stringify(problemDocument).includes(FIGURE2_QUESTION) || problemDocument.questionContext.stem !== null) throw new Error("分享 JSON 仍携带本地题干转写");
+if (problemDocument.schema !== "geometry-diagram/v5" || !problemDocument.sourceImage.attachedWithThisShare || !problemDocument.questionContext.stemMustBeReadFromSourceImage) throw new Error("分享 JSON 没有记录原题图片读题规则");
+if (!problemShare.includes("题干不在此处重复发送") || !problemShare.includes("多模态看图能力") || !problemShare.includes("原题图片") || !problemShare.includes("逐项检查") || !problemShare.includes("采用原图题干作为依据")) throw new Error("分享说明没有要求 GPT 从原图读题并报告结构冲突");
 if (!problemDocument.collinearChains.some((chain) => chain.pointsInOrder.join("-") === "C-D-G")) throw new Error("没有输出 C-D-G 共线顺序");
 
 console.log(JSON.stringify({

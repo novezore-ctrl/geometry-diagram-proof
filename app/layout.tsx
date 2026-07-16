@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "几何图校对器",
-  description: "在设备本地校正几何题配图，把原题图片、题干、多模态理解说明、必画线清单和已确认元素一起分享给 GPT。",
+  description: "在设备本地校正几何题配图，把原题图片和人工校正后的图形结构说明分享给 GPT，由 GPT 直接从原图读取题干。",
   manifest: "/manifest.webmanifest",
 };
 

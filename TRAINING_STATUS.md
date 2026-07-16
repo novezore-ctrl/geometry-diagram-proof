@@ -406,16 +406,13 @@ The production build and live Windows browser test passed at 100% and 249%.
 Figure 2 remained at 7 points, 10 segments, 0 arrows, and 4 point-on-line
 relations, and the browser produced no console errors.
 
-### Multimodal source-image sharing (`geometry-diagram/v4`)
+### Multimodal source-image sharing (`geometry-diagram/v4`, superseded)
 
-The GPT share action now treats the original problem image as the visual source
-of truth instead of copying text alone. Desktop browsers first write one rich
-clipboard item containing both `image/png` and `text/plain`. The PNG is a clean,
-currently oriented copy of the source photograph without correction overlays.
-On platforms that reject mixed clipboard formats, the app falls back to the
-system share sheet with `geometry-original.png`, the v4 JSON file, and the same
-instruction text. A text-only last resort explicitly warns the user to attach
-the image manually instead of claiming that an image was sent.
+The first implementation wrote one rich clipboard item containing both
+`image/png` and `text/plain`. Browser-side write tests passed, but an end-to-end
+paste into ChatGPT proved that the two MIME types were alternatives: ChatGPT
+received the text and not the image. Therefore this v4 clipboard workflow is no
+longer treated as reliable.
 
 The v4 prompt tells GPT that the detailed point, segment, collinearity, and JSON
 description exists to improve its understanding of the original figure rather
@@ -423,8 +420,23 @@ than replace it. GPT is explicitly required to use its own multimodal vision,
 combine visual evidence with the problem statement and corrected structure,
 and report when the image is missing or conflicts with the description.
 
-The Windows browser completed the mixed image-and-text clipboard branch for the
-Figure 2 regression case (7 points, 10 segments, 0 arrows, 4 point-on-line
-relations) with no console errors. Physical iPhone/iPad share-sheet acceptance
-still depends on the installed Safari/iOS version and remains a device-side
-acceptance item.
+### Image-first GPT handoff (`geometry-diagram/v5`)
+
+Desktop handoff is now an explicit two-step operation: first copy and paste the
+clean original image, then copy and paste the geometry structure into the same
+GPT conversation. Apple devices can use the system share sheet to send the
+original PNG plus text/JSON structure attachments. The UI no longer claims that
+one desktop clipboard paste will deliver both representations.
+
+The locally entered or case-specific question transcription is used only to
+help on-device topology filtering. It is deliberately omitted from both the GPT
+instruction text and the v5 JSON. GPT is told to read the printed problem
+statement directly from the original image because its multimodal reading is
+more reliable than this project's local text handling. The Figure 2 local hint
+was also corrected from the erroneous `∠A=∠AGD` to the printed `∠A=∠ACD`.
+
+The v5 authority order is: printed problem statement in the original image,
+GPT's direct visual observation, then the corrected/recognized structure. If a
+line, collinearity, or attachment in the auxiliary structure conflicts with the
+problem statement, GPT must list the conflict and explicitly continue from the
+printed statement instead of silently following the auxiliary data.

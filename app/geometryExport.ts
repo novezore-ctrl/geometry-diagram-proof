@@ -6,6 +6,7 @@ export type GeometryShareContext = {
   confirmedArrowIds?: string[];
   confirmedCircleIds?: string[];
   sourceImageAttached?: boolean;
+  includeQuestionText?: boolean;
 };
 
 const rounded = (value: number) => Math.round(value * 1000) / 1000;
@@ -55,6 +56,7 @@ export function buildGeometryDocument(result: Detection, context: GeometryShareC
   const confirmedArrows = result.arrows.filter((arrow) => confirmedArrowIds.has(arrow.id));
   const confirmedCircles = result.circles.filter((circle) => confirmedCircleIds.has(circle.id));
   const questionText = context.questionText?.trim() || "";
+  const includeQuestionText = context.includeQuestionText === true;
 
   const attachment = (item: AttachmentRelation) => {
     const hostA = name(item.hostA), hostB = name(item.hostB), junction = name(item.junction), branch = name(item.branch);
@@ -110,23 +112,26 @@ export function buildGeometryDocument(result: Detection, context: GeometryShareC
     }));
 
   return {
-    schema: "geometry-diagram/v4",
+    schema: "geometry-diagram/v5",
     purpose: "随原始题图提供详细的辅助说明，供 GPT 使用多模态看图能力联合题干理解几何图形；这不是题目证明结论",
     sourceImage: {
       attachedWithThisShare: context.sourceImageAttached === true,
-      role: "原始题图是视觉主输入；题干和结构说明用于帮助 GPT 更准确地消除点、线、交点与几何关系的歧义，不能替代看图。",
+      role: "题干原文是最高依据；原始题图用于多模态核对，识别出的结构说明和 JSON 只作低优先级辅助，不能替代题干或看图。",
       multimodalInstruction: "必须先使用自身的多模态视觉能力观察原始题图，再把视觉观察与题干、人工校正结构联合理解。",
       missingImageRule: "如果实际没有收到或无法看见原始题图，必须明确说明并要求用户补图，不得假装已经看图。",
     },
     questionContext: {
-      figureRole: "这是某道几何题中的一个配图，不是脱离题干的独立示意图",
+      figureRole: "这些结构描述属于随附原题图片中的这道题，不是脱离题干的独立示意图",
       title: context.questionTitle?.trim() || null,
-      stemProvided: Boolean(questionText),
-      stem: questionText || null,
-      authorityRule: "题干中的显式条件优先于视觉外观；图形结构用于消除点、线和交点关系的歧义。二者冲突时必须指出冲突，不得静默改图。",
+      stemProvided: Boolean(questionText && includeQuestionText),
+      stemRepeatedOutsideImage: Boolean(questionText && includeQuestionText),
+      stemMustBeReadFromSourceImage: !includeQuestionText,
+      stem: questionText && includeQuestionText ? questionText : null,
+      authorityRule: "原题图片中的印刷题干是最高依据。AI 对几何图形的直接视觉观察其次；用户校正或机器识别出的结构文字与 JSON 只作辅助。结构说明可能因用户疏忽、漏线或误连而出错；发现冲突时必须在回答中逐项指出，并明确说明采用原图题干作为依据，不得为了迁就结构说明而改写题干。",
       requiredReasoningOrder: [
-        "先从题干提取点、线、角、交点、翻折、平分线等显式条件",
-        "再用结构化图形确认这些对象在图中的连接和相对位置",
+        "先从附带的原题图片直接读取印刷题干，提取点、线、角、交点、翻折、平分线等显式条件",
+        "再用自身多模态能力观察原图，并核对结构文字、线段清单、共线关系和 attachments 是否与题干一致",
+        "若发现漏线、误连、错字或关系冲突，先在回答中列出冲突，并声明后续采用题干原文",
         "最后才进行证明、计算或重绘",
       ],
     },
@@ -182,27 +187,33 @@ export function buildGeometryDocument(result: Detection, context: GeometryShareC
       expectedPointCount: result.points.length,
       expectedVisibleSegmentCount: mustRenderSegments.length,
       mustRenderEveryListedSegment: true,
+      appliesAfterQuestionConflictAudit: true,
+      authorityCondition: "线段清单只在不与题干原文冲突时作为重绘约束；若冲突，必须报告冲突并按题干修正，不得盲从清单。",
       mustRenderSegmentPairs: mustRenderSegments.map((segment) => segment.endpoints),
       mustRenderSegmentLabels: mustRenderSegments.map((segment) => segment.visibleLabel),
       collinearChains,
       forbiddenActions: [
-        "不得漏掉 mustRenderSegmentPairs 中的任何一条线，例如清单中的 E—G 也必须清晰可见",
+        "不得跳过题干与 mustRenderSegmentPairs 的冲突检查；发现错误关系时必须先报告并采用题干",
+        "对经题干核对无冲突的 mustRenderSegmentPairs，不得漏画任何一条线，例如 E—G 也必须清晰可见",
         "不得新增未列出的线、射线、圆、垂直、平行、等长、等角或中点条件",
         "不得把线段清单文字写对但在最终图中漏画",
       ],
-      postRenderVerification: "成图后逐条回读 mustRenderSegmentLabels；只有每条都能在图上找到，且点数、线数一致，才可交付。",
+      postRenderVerification: "先排除或修正与题干冲突的结构项，再逐条回读其余 mustRenderSegmentLabels；只有题干条件、原图观察和最终成图一致，才可交付。",
     },
     uncertainties: [
       ...attachments.filter((item) => !item.position.exact).map((item) => item.position.statement),
-      ...(questionText ? [] : ["题干尚未填写，因此不能利用题目语义校验图形。"]),
+      ...(questionText || context.sourceImageAttached ? [] : ["没有可用的题干或原题图片，因此不能利用题意校验图形。"]),
+      "用户可能疏忽未发现识别出的漏线、误连或错误共线关系；结构说明和 JSON 必须先与题干核对。",
       "没有题干文字或人工确认时，不从图形外观推断垂直、平行、等长、等角或精确比例。",
     ],
     instructionsForGpt: [
       "以下详细说明的目的，是帮助你更准确地理解原始题图中的几何图形，不是用文字或 JSON 替代原图。",
       "必须使用自身的多模态看图能力先观察原始题图，再把视觉观察、题干与该 JSON 当作同一道题的互补输入联合理解。",
       "如果实际没有收到或看不到原图，必须先明确说明并要求补图，不得假装已经看图。",
-      "先复述题干显式条件，再复述 points、segments、collinearChains 和 attachments，并检查二者能否相互解释。",
-      "重绘时必须逐条画出 drawingContract.mustRenderSegmentPairs；画完后再逐条自检，不能出现清单有 E—G 而图上没有 E—G 的情况。",
+      "题干不在结构说明中重复转写，必须直接从原题图片读取；原图中的印刷题干是最高依据。",
+      "对图形的直接视觉观察其次；points、segments、collinearChains、attachments 和 JSON 只作辅助，可能包含用户漏看的识别错误。",
+      "先复述题干显式条件，再核对 points、segments、collinearChains 和 attachments；发现错误关系时必须在回答中逐项指出，并明确告知用户后续采用题干原文。",
+      "重绘时只对经题干核对无冲突的 drawingContract.mustRenderSegmentPairs 逐条画出并自检；不得为了迁就错误线段关系而改写题干。",
       "只有 user_confirmed_division 才是精确等分条件；approximate_location 不能当作中点或精确比例。",
       "只有 primitives.rays 中的项目才是已确认射线；excludedUnconfirmedCandidates 中的箭头或圆必须忽略。",
     ],
@@ -217,18 +228,20 @@ export function toGptShareText(result: Detection, context: GeometryShareContext 
   const lines = [
     "【给 GPT 的多模态理解说明】",
     imageNotice,
-    "以下题干、点线连接、共线顺序和结构化 JSON，是为了帮助你更准确地理解原始题图中的几何图形，不是用文字说明或 JSON 替代原图。",
+    "以下点线连接、共线顺序和结构化 JSON，是对随附原题图片中几何图形的辅助描述，目的是帮助你更准确地理解该题中的图形，不是用文字说明或 JSON 替代原图。",
     "请务必利用你自身的多模态看图能力先观察原始题图，再把视觉观察与下面的详细描述结合起来理解题目；不得只读说明或只看 JSON。",
     "如果你没有实际收到或看不到原始题图，请先明确说明并要求用户补图，不得假装已经看图。",
-    "这是某道几何题中的一个配图。请把原始题图、下面的题干和校正后的图形结构作为同一道题联合理解。",
-    "题干中的显式条件优先于视觉外观；结构化图形负责说明点、线和交点怎样连接。若二者冲突，请先指出冲突，不要静默修改。",
+    "【最高优先级规则】题干不在这里重复转写，请直接从原题图片读取。原图中的印刷题干是最高依据；对图形的直接视觉观察其次；识别出的线段关系、共线说明和 JSON 只作辅助，可能因为用户疏忽而含有漏线、误连或错字。",
+    "请先逐项检查辅助说明是否与原图题干和图形一致。若发现冲突，必须在回答中明确列出错误关系，告知用户将采用原图题干作为依据，然后再继续解题或重绘；不得静默采纳错误结构，也不得为了迁就它而改写题干。",
+    "这是某道几何题中的一个配图。请把原始题图和下面的校正结构作为同一道题联合理解。",
+    "结构化图形负责辅助说明点、线和交点怎样连接，但其权威低于题干。",
+    "题干不在此处重复发送；必须直接读取随附原题图片中的印刷文字。",
     "",
-    "题干：",
-    document.questionContext.stem || "（题干尚未填写；请勿猜测题意，只能按已确认图形结构工作。）",
-    "",
-    `重绘硬约束：必须画出全部 ${document.drawingContract.expectedVisibleSegmentCount} 条已确认线，不能漏画、不能新增。`,
-    `逐条必画清单：${document.drawingContract.mustRenderSegmentLabels.join("、") || "无"}`,
   ];
+  lines.push(
+    `辅助结构清单：当前记录了 ${document.drawingContract.expectedVisibleSegmentCount} 条线；必须先与题干核对，冲突项要报告并按题干修正。`,
+    `核对后无冲突的逐条必画清单：${document.drawingContract.mustRenderSegmentLabels.join("、") || "无"}`,
+  );
   if (document.collinearChains.length) {
     lines.push("共线与点在线上：", ...document.collinearChains.map((chain) => `- ${chain.statement}`));
   }
@@ -240,7 +253,7 @@ export function toGptShareText(result: Detection, context: GeometryShareContext 
     lines.push(`已排除机器候选：${excluded.arrows.length} 个未确认箭头、${excluded.circles.length} 个未确认圆；禁止把它们画进题图。`);
   }
   lines.push(
-    "作图后自检：在最终图中逐条找到上述必画线，并核对点数和线数；任何一条只出现在说明中却没有画出来，都视为失败。",
+    "作图后自检：先确认已报告并排除与题干冲突的结构项，再在最终图中逐条找到其余必画线，并核对题干条件、点数和线数。",
     "不要从图形外观补出题干未给出的垂直、平行、等长、等角、中点或精确比例。",
     "",
     "结构化 JSON：",

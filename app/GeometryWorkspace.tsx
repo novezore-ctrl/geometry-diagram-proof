@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { FIGURE2_QUESTION } from "./figure2Case";
 import { buildGeometryDocument, toGptShareText } from "./geometryExport";
 import { initialMobileStatus, inspectClientStatus, requestMobileInference, type MobileInferenceStatus } from "./mobileInference";
 import { deriveAttachments, viewportToCanvasPoint, type Detection, type PointNode, type SegmentEdge } from "./vision";
@@ -9,7 +10,6 @@ type Tool = "move" | "point" | "connect" | "erase";
 const EMPTY: Detection = { points: [], segments: [], arrows: [], attachments: [], circles: [], labels: [], threshold: 0 };
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 6;
-const FIGURE2_QUESTION = "在△ABC中，∠ACB=90°，点D是边AB上一点，将△ACD沿直线CD翻折得到△ECD，DE与射线CB交于点F。如图2，连接BE，∠BED的平分线交直线CD于点G，且∠ADC=2∠G。若∠A=∠AGD，请说明∠CBE=∠G。";
 const KNOWN_FIGURE2_FILE = /(?:cc7f2819251c28d7c5a5ce043412c21a|figure2[_ -]?photo|图2)/i;
 
 function drawOrientedImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, width: number, height: number, rotation: number) {
@@ -79,6 +79,7 @@ export function GeometryWorkspace() {
   const [fitSize, setFitSize] = useState({ width: 0, height: 0 });
   const [rotation, setRotation] = useState(0);
   const [mobileStatus, setMobileStatus] = useState<MobileInferenceStatus>(() => initialMobileStatus());
+  const [systemShareAvailable, setSystemShareAvailable] = useState(false);
 
   const pointMap = new Map(result.points.map((point) => [point.id, point]));
   const pointName = (id: string) => pointMap.get(id)?.label || id;
@@ -142,7 +143,10 @@ export function GeometryWorkspace() {
 
   useEffect(() => renderCanvas(), [renderCanvas]);
   useEffect(() => {
-    const statusFrame = requestAnimationFrame(() => setMobileStatus(inspectClientStatus()));
+    const statusFrame = requestAnimationFrame(() => {
+      setMobileStatus(inspectClientStatus());
+      setSystemShareAvailable(typeof navigator.share === "function");
+    });
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => undefined);
     return () => cancelAnimationFrame(statusFrame);
   }, []);
@@ -504,46 +508,67 @@ export function GeometryWorkspace() {
     else setConfirmedCircleIds(update);
   };
 
-  const shareToGpt = async () => {
+  const shareContext = (sourceImageAttached: boolean) => ({
+    questionTitle: fileName,
+    questionText,
+    confirmedArrowIds,
+    confirmedCircleIds,
+    sourceImageAttached,
+    includeQuestionText: false,
+  });
+
+  const copyOriginalImage = async () => {
     const image = imageRef.current;
     if (!image) return;
     setSharing(true);
-    const imageBlobPromise = originalImagePng(image, rotation);
-    const shareContext = { questionTitle: fileName, questionText, confirmedArrowIds, confirmedCircleIds, sourceImageAttached: true };
-    const text = toGptShareText(result, shareContext), json = JSON.stringify(buildGeometryDocument(result, shareContext), null, 2);
     try {
-      if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
-        try {
-          const item = new ClipboardItem({
-            "text/plain": new Blob([text], { type: "text/plain;charset=utf-8" }),
-            "image/png": imageBlobPromise,
-          });
-          await navigator.clipboard.write([item]);
-          setMessage("原题图片、题干、多模态理解说明和结构化 JSON 已一起复制，可直接粘贴到 GPT。");
-          return;
-        } catch {
-          // Some Apple/Windows browser versions expose ClipboardItem but do not
-          // permit mixed image + text writes. Fall through to system sharing.
-        }
-      }
-      const imageBlob = await imageBlobPromise;
-      if (navigator.share) {
-        const imageFile = new File([imageBlob], "geometry-original.png", { type: "image/png" });
-        const jsonFile = new File([json], "geometry-problem-figure-v4.json", { type: "application/json" });
-        const files = [imageFile, jsonFile];
-        if (!navigator.canShare || navigator.canShare({ files })) await navigator.share({ title: "原题图片与校正后的几何图语义", text, files });
-        else if (navigator.canShare({ files: [imageFile] })) await navigator.share({ title: "原题图片与校正后的几何图语义", text, files: [imageFile] });
-        else throw new Error("当前系统分享不支持图片文件");
-        setMessage("已打开系统分享面板，原题图片和多模态理解说明会一起发送给 GPT。"); return;
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
+      if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") throw new Error("浏览器不支持图片剪贴板");
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": originalImagePng(image, rotation) })]);
+      setMessage("步骤①完成：原题图片已复制。请先切换到 GPT 粘贴图片，再回来执行步骤②复制说明。");
+    } catch {
+      const blob = await originalImagePng(image, rotation);
+      const url = URL.createObjectURL(blob), link = document.createElement("a");
+      link.href = url; link.download = "geometry-original.png"; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setMessage("浏览器不允许直接复制图片，已下载 geometry-original.png；请先把它上传给 GPT，再执行步骤②。");
     } finally {
       setSharing(false);
     }
-    const textOnlyContext = { ...shareContext, sourceImageAttached: false };
-    await navigator.clipboard.writeText(toGptShareText(result, textOnlyContext));
-    setMessage("当前浏览器没有允许图片与文字一起复制；说明文字已复制，但必须再把原题图片手动附给 GPT。");
+  };
+
+  const copyShareText = async () => {
+    try {
+      await navigator.clipboard.writeText(toGptShareText(result, shareContext(true)));
+      setMessage("步骤②完成：图形结构说明已复制（不含本地题干转写）。请回到刚才已粘贴原图的 GPT 对话中继续粘贴。");
+    } catch {
+      setMessage("浏览器未允许复制说明文字，请检查剪贴板权限后重试。");
+    }
+  };
+
+  const shareToGpt = async () => {
+    const image = imageRef.current;
+    if (!image || !navigator.share) {
+      setMessage("当前设备不支持一次系统分享，请使用下面的步骤①和步骤②分别粘贴图片与说明。");
+      return;
+    }
+    setSharing(true);
+    const context = shareContext(true), text = toGptShareText(result, context);
+    const json = JSON.stringify(buildGeometryDocument(result, context), null, 2);
+    try {
+      const imageBlob = await originalImagePng(image, rotation);
+      const imageFile = new File([imageBlob], "geometry-original.png", { type: "image/png" });
+      const jsonFile = new File([json], "geometry-problem-figure-v5.json", { type: "application/json" });
+      const textFile = new File([text], "geometry-gpt-instructions.txt", { type: "text/plain" });
+      const files = [imageFile, textFile, jsonFile];
+      if (!navigator.canShare || navigator.canShare({ files })) await navigator.share({ title: "原题图片与几何理解说明", text, files });
+      else if (navigator.canShare({ files: [imageFile, textFile] })) await navigator.share({ title: "原题图片与几何理解说明", text, files: [imageFile, textFile] });
+      else throw new Error("当前系统不支持同时分享图片和说明文件");
+      setMessage("系统分享已发送原题图片和说明文件；请在 GPT 中确认两者都已成为附件。");
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) setMessage("系统未能一次发送图片和说明，请改用步骤①和步骤②分别粘贴。");
+    } finally {
+      setSharing(false);
+    }
   };
 
   const unconfirmedArrows = result.arrows.filter((arrow) => arrow.source !== "manual" && !confirmedArrowIds.includes(arrow.id)).length;
@@ -561,8 +586,8 @@ export function GeometryWorkspace() {
     </header>
 
     <section className="intro-card">
-      <div><p className="step-label">原图 + 题干 + 图形 + 人工确认</p><h2>先明确这是哪道题的图，再让 GPT 按清单一条不漏地理解</h2><p>原图供多模态看图，题干给语义，结构说明给连接；未确认箭头和圆不会进入分享内容。</p></div>
-      <div className="scope-pills"><span>题干联合理解</span><span>全部线段必画</span><span>误检候选隔离</span></div>
+      <div><p className="step-label">原题图片 + 图形结构说明</p><h2>让 GPT 自己读原图题干，再用校正后的结构核对图形</h2><p>分享时不附带本地题干转写，避免文字识别错误误导 GPT；未确认箭头和圆也不会进入分享内容。</p></div>
+      <div className="scope-pills"><span>GPT 直接读题</span><span>全部线段核对</span><span>误检候选隔离</span></div>
     </section>
 
     <section className="workspace-grid">
@@ -587,9 +612,9 @@ export function GeometryWorkspace() {
       <aside className="control-panel">
         <div className="panel-head compact"><div><span className="panel-index">02</span><strong>人工校正</strong></div></div>
         <section className="question-context">
-          <div><strong>题干（与图一起分享）</strong><span className={questionText.trim() ? "context-state ok" : "context-state warn"}>{questionText.trim() ? "已填写" : "待填写"}</span></div>
-          <textarea data-testid="question-context" value={questionText} onChange={(event) => setQuestionText(event.target.value)} placeholder="粘贴这幅图所属小题的题干、已知条件和问题。题干越完整，GPT 越能判断某条线的作用。" />
-          <small>分享时会先要求 GPT 从题干提取翻折、交点、角平分线等语义，再用图形结构核对。例如本题的 E—G 不是普通装饰线，而是 ∠BED 的平分线与直线 CD 相交所形成的关键连接。</small>
+          <div><strong>本地识别提示（不会发给 GPT）</strong><span className={questionText.trim() ? "context-state ok" : "context-state warn"}>{questionText.trim() ? "已填写" : "可选"}</span></div>
+          <textarea data-testid="question-context" value={questionText} onChange={(event) => setQuestionText(event.target.value)} placeholder="可选：仅用于本机筛选点线候选，不作为 GPT 读题依据，也不会被复制或分享。" />
+          <small>GPT 会直接读取随附原题图片中的印刷题干。本地文字只帮助设备端识别拓扑；即使本地写错，也不会进入分享文本或 JSON。</small>
         </section>
         <div className="tool-grid">{tools.map(([value, icon, label]) => <button key={value} className={tool === value ? "tool active" : "tool"} onClick={() => { setTool(value); setFirstPoint(null); }}><b>{icon}</b>{label}</button>)}</div>
         <label className="box-toggle"><input type="checkbox" checked={showBoxes} onChange={(e) => setShowBoxes(e.target.checked)}/>显示橙色标签候选框</label>
@@ -607,15 +632,20 @@ export function GeometryWorkspace() {
         </div>
         <div className="share-audit" data-testid="share-audit">
           <strong>分享前检查</strong>
-          <span className="ok">原题图片会与多模态理解说明一起复制或分享</span>
-          <span className={questionText.trim() ? "ok" : "warn"}>{questionText.trim() ? "题干会与图形一起发送" : "尚未填写题干，GPT 无法结合题意校验"}</span>
+          <span className="safe">电脑剪贴板不能保证一次粘贴图片和文字：请按步骤①、②分别粘贴；系统分享可一次发送附件</span>
+          <span className="ok">只发送原题图片和图形结构说明；本地题干文字不会发送，GPT 必须直接看图读题</span>
           <span className="ok">{segmentChecklist.length} 条线全部列入“必须画出”：{segmentChecklist.join("、") || "无"}</span>
           {(unconfirmedArrows > 0 || unconfirmedCircles > 0) && <span className="safe">已隔离 {unconfirmedArrows} 个未确认箭头、{unconfirmedCircles} 个未确认圆</span>}
         </div>
-        <button className="button export" disabled={!result.points.length || sharing} onClick={shareToGpt}>{sharing ? "正在准备原题图片…" : "复制原图 + 题干 + 结构说明给 GPT"}</button>
+        <div className="share-actions">
+          <button className="button export" disabled={!result.points.length || sharing} onClick={copyOriginalImage}>{sharing ? "正在准备原题图片…" : "① 复制原题图片"}</button>
+          <button className="button export secondary-export" disabled={!result.points.length || sharing} onClick={copyShareText}>② 复制图形结构说明</button>
+          <button className="button system-share" disabled={!result.points.length || sharing || !systemShareAvailable} onClick={shareToGpt}>系统分享原图 + 说明</button>
+          <small>电脑：先把步骤①粘贴到 GPT，再回来执行步骤②并继续粘贴。苹果手机/平板可优先使用系统分享。</small>
+        </div>
       </aside>
     </section>
-    <footer><strong>当前痛点：</strong>只传图会让 GPT 猜线的作用，只传 JSON 又可能“清单写了但图没画”。现在原题图片会与多模态理解说明、题干、必画线清单、共线顺序和误检候选隔离规则一起分享。</footer>
+    <footer><strong>分享原则：</strong>GPT 直接从原题图片读取题干；本工具只补充人工校正后的点线、共线顺序和位置关系。若结构说明与原图题干冲突，GPT 必须指出冲突并以原图题干为准。</footer>
   </main>;
 }
 

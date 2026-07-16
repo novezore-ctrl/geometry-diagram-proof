@@ -110,7 +110,13 @@ h1 { margin:5px 0 0; color:var(--forest); font-family:Georgia,"Noto Serif SC",se
 .share-audit strong { color:#294b41; font-size:12px; }
 .share-audit span { display:block; padding-left:14px; color:#60726d; font-size:10px; line-height:1.45; position:relative; }
 .share-audit span::before { position:absolute; left:0; top:0; font-weight:900; }.share-audit .ok::before { content:"✓"; color:#0b9870; }.share-audit .warn::before { content:"!"; color:#dc7a25; }.share-audit .safe::before { content:"×"; color:#7f5ab3; }
-.button.export { width:calc(100% - 28px); margin:14px; color:white; background:#234d43; }
+.button.export { color:white; background:#234d43; }
+.share-actions { display:grid; gap:8px; margin:14px; }
+.share-actions .button { width:100%; margin:0; }
+.share-actions>small { color:#64766f; font-size:10px; line-height:1.5; }
+.button.secondary-export { background:#315f54; }
+.button.system-share { color:#234d43; border:1px solid #b7cec4; background:#f2f8f5; }
+.button.system-share:disabled { color:#9aaba5; background:#f4f6f5; }
 footer { padding:22px 4px 0; color:#71817c; font-size:12px; }
 footer strong { color:#3f5d54; }
 
