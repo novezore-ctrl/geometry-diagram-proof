@@ -2,10 +2,10 @@ import { extractQuestionConstrained } from "./mobileQuestionConstraints";
 import { detectDiagram, type Detection } from "./vision";
 
 const MODEL_SIZE = 320;
-const MODEL_URL = "/models/geometry_unet_pgdp5k_epoch5_320.onnx";
+const MODEL_PATH = "models/geometry_unet_pgdp5k_epoch5_320.onnx";
 const ORT_RUNTIME_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist";
 
-export type MobileBackend = "webgpu" | "wasm";
+export type MobileBackend = "webgpu" | "wasm" | "classical";
 export type MobileInferenceStatus = {
   ready: boolean;
   backend?: MobileBackend;
@@ -20,6 +20,7 @@ type Runtime = {
 };
 
 let runtimePromise: Promise<Runtime> | null = null;
+let runtimeFailure: unknown = null;
 
 function clientDeviceLabel() {
   if (typeof navigator === "undefined") return "本机芯片";
@@ -53,11 +54,14 @@ async function configureWasm(ort: OrtModule, variant: "asyncify" | "plain") {
 }
 
 async function createRuntime(): Promise<Runtime> {
+  // Resolve from the document URL instead of the origin. GitHub project Pages
+  // serves the app below /<repository>/, while local and Sites builds use /.
+  const modelUrl = new URL(MODEL_PATH, document.baseURI).href;
   if (!forceWasmForDiagnostics() && "gpu" in navigator && window.isSecureContext) {
     try {
       const ort = await import("onnxruntime-web/webgpu") as unknown as OrtModule;
       await configureWasm(ort, "asyncify");
-      const session = await ort.InferenceSession.create(MODEL_URL, {
+      const session = await ort.InferenceSession.create(modelUrl, {
         executionProviders: ["webgpu"], graphOptimizationLevel: "all",
       });
       return { ort, session, backend: "webgpu" };
@@ -67,15 +71,16 @@ async function createRuntime(): Promise<Runtime> {
   }
   const ort = await import("onnxruntime-web/wasm") as OrtModule;
   await configureWasm(ort, "plain");
-  const session = await ort.InferenceSession.create(MODEL_URL, {
+  const session = await ort.InferenceSession.create(modelUrl, {
     executionProviders: ["wasm"], graphOptimizationLevel: "all",
   });
   return { ort, session, backend: "wasm" };
 }
 
 function runtime() {
+  if (runtimeFailure) return Promise.reject(runtimeFailure);
   if (!runtimePromise) runtimePromise = createRuntime().catch((error) => {
-    runtimePromise = null;
+    runtimeFailure = error;
     throw error;
   });
   return runtimePromise;
@@ -141,27 +146,47 @@ export function inspectClientStatus(): MobileInferenceStatus {
 
 export async function requestMobileInference(source: HTMLCanvasElement, questionText: string) {
   const startedAt = performance.now();
-  const active = await runtime();
   const input = modelInput(source);
-  const tensor = new active.ort.Tensor("float32", input.data, [1, 3, MODEL_SIZE, MODEL_SIZE]);
-  const outputMap = await active.session.run({ [active.session.inputNames[0]]: tensor });
-  const output = outputMap[active.session.outputNames[0]];
-  const logits = await output.getData() as Float32Array;
-  const mask = argmaxMask(logits);
-  const constrained = extractQuestionConstrained(mask, MODEL_SIZE, MODEL_SIZE, questionText);
-  // When no known question template applies, the legacy detector still runs
-  // on the phone. It is only a conservative fallback and never calls the PC.
-  const detection = constrained || detectDiagram(input.image);
-  const elapsedMs = Math.round(performance.now() - startedAt);
-  return {
-    detection: scaleDetection(detection, source.width, source.height),
-    metadata: {
-      device: "phone", backend: active.backend, model: "geometry_unet_pgdp5k_epoch5_320",
-      question_constraints_applied: Boolean(constrained), inference_ms: elapsedMs,
-    },
-    status: {
-      ready: true, backend: active.backend,
-      deviceLabel: clientDeviceLabel(),
-    } satisfies MobileInferenceStatus,
-  };
+  try {
+    const active = await runtime();
+    const tensor = new active.ort.Tensor("float32", input.data, [1, 3, MODEL_SIZE, MODEL_SIZE]);
+    const outputMap = await active.session.run({ [active.session.inputNames[0]]: tensor });
+    const output = outputMap[active.session.outputNames[0]];
+    const logits = await output.getData() as Float32Array;
+    const mask = argmaxMask(logits);
+    const constrained = extractQuestionConstrained(mask, MODEL_SIZE, MODEL_SIZE, questionText);
+    // When no known question template applies, the legacy detector still runs
+    // on the phone. It is only a conservative fallback and never calls the PC.
+    const detection = constrained || detectDiagram(input.image);
+    const elapsedMs = Math.round(performance.now() - startedAt);
+    return {
+      detection: scaleDetection(detection, source.width, source.height),
+      metadata: {
+        device: "phone", backend: active.backend, model: "geometry_unet_pgdp5k_epoch5_320",
+        question_constraints_applied: Boolean(constrained), inference_ms: elapsedMs,
+      },
+      status: {
+        ready: true, backend: active.backend,
+        deviceLabel: clientDeviceLabel(),
+      } satisfies MobileInferenceStatus,
+    };
+  } catch (error) {
+    // The public repository intentionally excludes the PGDP5K-derived weight
+    // until its redistribution terms are confirmed. Keep the page usable with
+    // a conservative, fully local detector when that optional asset is absent.
+    const detection = detectDiagram(input.image);
+    return {
+      detection: scaleDetection(detection, source.width, source.height),
+      metadata: {
+        device: "phone", backend: "classical" as const, model: "classical_browser_fallback",
+        question_constraints_applied: false,
+        inference_ms: Math.round(performance.now() - startedAt),
+        fallback_reason: error instanceof Error ? error.message : String(error),
+      },
+      status: {
+        ready: true, backend: "classical",
+        deviceLabel: clientDeviceLabel(),
+      } satisfies MobileInferenceStatus,
+    };
+  }
 }

@@ -1,5 +1,6 @@
-const CACHE = "geometry-proof-mobile-v3";
-const CORE = ["/", "/manifest.webmanifest"];
+const CACHE = "geometry-proof-mobile-v4";
+const APP_SHELL = new URL("./", self.registration.scope).href;
+const CORE = [APP_SHELL, new URL("manifest.webmanifest", self.registration.scope).href];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(CORE)));
   self.skipWaiting();
@@ -14,5 +15,5 @@ self.addEventListener("fetch", (event) => {
     const copy = response.clone();
     caches.open(CACHE).then((cache) => cache.put(event.request, copy));
     return response;
-  }).catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))));
+  }).catch(() => caches.match(event.request).then((cached) => cached || caches.match(APP_SHELL))));
 });

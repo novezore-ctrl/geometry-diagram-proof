@@ -1,5 +1,11 @@
 # Geometry diagram recognition handoff
 
+> Public-repository note (2026-07-17): the textbook-photo fixtures and the
+> PGDP5K-derived ONNX weight described in this historical log remain available
+> locally but are ignored and removed from the public branch until their
+> redistribution terms are confirmed. The public demo uses a topology-derived
+> drawing instead, and photo regression accepts an explicit local `--image`.
+
 Updated: 2026-07-16
 
 ## Goal and product boundary

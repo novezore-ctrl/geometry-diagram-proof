@@ -241,7 +241,7 @@ export function GeometryWorkspace() {
       zoomRef.current = 1; setZoom(1);
       setSelection(autoSelect ? { x: 0, y: 0, w: canvas.width, h: canvas.height } : null);
       const autoSelectMessage = name.includes("图2")
-        ? "真实图2照片已载入，题干与全图选区已就绪；点击“开始识别”将在这台手机上运行 U-Net。"
+        ? "图2结构案例已载入，题干与全图选区已就绪；点击“开始识别”将优先运行本机模型，公开版未捆绑模型时会自动使用传统视觉后备。"
         : "箭头与线内连接案例已载入，选区已就绪，点击“开始识别”。";
       setMessage(prepared ? "题干联动案例已载入：图中没有箭头，E—G 被列为必须绘制的角平分线连接。" : autoSelect ? autoSelectMessage : "图片已载入，请框选区域后点击“开始识别”。");
       requestAnimationFrame(() => { fitCanvas(); renderCanvas(); if (stageRef.current) { stageRef.current.scrollLeft = 0; stageRef.current.scrollTop = 0; } });
@@ -272,7 +272,58 @@ export function GeometryWorkspace() {
 
   const questionSample = () => {
     setQuestionText(FIGURE2_QUESTION);
-    loadImage("/figure2-photo.jpg", "真实照片 · 图2 手机端回归案例", true);
+    // The public demo is drawn from the verified topology instead of bundling
+    // a photographed textbook figure whose redistribution rights are unclear.
+    const canvas = document.createElement("canvas");
+    canvas.width = 900; canvas.height = 620;
+    const ctx = canvas.getContext("2d"); if (!ctx) return;
+    ctx.fillStyle = "white"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#18201f"; ctx.fillStyle = "#18201f"; ctx.lineWidth = 4; ctx.lineCap = "round";
+    const points = {
+      A: { x: 130, y: 70 }, B: { x: 760, y: 420 }, C: { x: 130, y: 420 },
+      D: { x: 457.6, y: 252 }, E: { x: 360, y: 560 }, F: { x: 404.4, y: 420 },
+      G: { x: 719.7, y: 117.6 },
+    } as const;
+    const segments = [
+      ["E", "G"], ["B", "C"], ["B", "D"], ["D", "A"], ["C", "D"],
+      ["D", "G"], ["C", "A"], ["E", "D"], ["B", "E"], ["E", "C"],
+    ] as const;
+    const orderedChains = [["A", "D", "B"], ["C", "D", "G"], ["B", "F", "C"], ["E", "F", "D"]] as const;
+    ctx.beginPath();
+    for (const [first, second] of segments) {
+      ctx.moveTo(points[first].x, points[first].y);
+      ctx.lineTo(points[second].x, points[second].y);
+    }
+    ctx.stroke();
+    ctx.font = "700 34px Georgia";
+    const offsets = { A: [-38, -12], B: [18, 10], C: [-40, 12], D: [-12, -20], E: [-16, 42], F: [14, 32], G: [14, -12] } as const;
+    for (const [label, point] of Object.entries(points)) {
+      const [dx, dy] = offsets[label as keyof typeof offsets];
+      ctx.fillText(label, point.x + dx, point.y + dy);
+    }
+    ctx.font = "20px 'Microsoft YaHei'"; ctx.fillStyle = "#657a73";
+    ctx.fillText("公开演示：由已核对拓扑重新绘制，不包含教材照片", 205, 602);
+    const demoScale = 760 / canvas.width;
+    const prepared: Detection = {
+      points: Object.entries(points).map(([label, point]) => ({
+        id: label, label, x: point.x * demoScale, y: point.y * demoScale,
+        confidence: 1, source: "manual",
+      })),
+      segments: segments.map(([a, b], index) => ({ id: `S${index + 1}`, a, b, confidence: 1, source: "manual" })),
+      arrows: [],
+      attachments: orderedChains.map(([hostA, junction, hostB], index) => {
+        const first = points[hostA], middle = points[junction], last = points[hostB];
+        const dx = last.x - first.x, dy = last.y - first.y;
+        const approximateT = ((middle.x - first.x) * dx + (middle.y - first.y) * dy) / Math.max(1, dx * dx + dy * dy);
+        return {
+          id: `O${index + 1}`, kind: "point_on_segment", junction, hostA, hostB,
+          position: { kind: "approximate", approximateT: Math.max(0, Math.min(1, approximateT)), coordinateUncertain: true },
+          confidence: 1, source: "manual", support: "question_and_collinearity",
+        };
+      }),
+      circles: [], labels: [], threshold: 0,
+    };
+    loadImage(canvas.toDataURL("image/png"), "合成图2结构示例", true, prepared);
   };
 
   const analyze = async () => {
@@ -326,8 +377,9 @@ export function GeometryWorkspace() {
       };
       setResult(mapped); setHasAnalyzed(true); setBusy(false);
       const constrained = response.metadata.question_constraints_applied === true;
-      const backendName = `${response.status.deviceLabel} ${response.status.backend === "webgpu" ? "WebGPU" : "CPU/WASM"}`;
-      setMessage(`${backendName} 本地识别完成（${response.metadata.inference_ms} ms）：${next.points.length}个点、${next.segments.length}条连接、${next.arrows.length}个箭头、${next.attachments.length}个线内位置。${constrained ? "已用题干约束筛除字母和角标误检；点名来自题干拓扑匹配，请人工复核。" : "题干不足以建立拓扑模板，当前是手机端模型候选，请人工复核。"}`);
+      const backendName = `${response.status.deviceLabel} ${response.status.backend === "webgpu" ? "WebGPU" : response.status.backend === "wasm" ? "CPU/WASM" : "传统视觉后备"}`;
+      const fallback = response.metadata.model === "classical_browser_fallback";
+      setMessage(`${backendName} 本地识别完成（${response.metadata.inference_ms} ms）：${next.points.length}个点、${next.segments.length}条连接、${next.arrows.length}个箭头、${next.attachments.length}个线内位置。${fallback ? "公开版本未捆绑许可待确认的训练权重，当前仅使用低置信度传统视觉候选，请重点人工复核。" : constrained ? "已用题干约束筛除字母和角标误检；点名来自题干拓扑匹配，请人工复核。" : "题干不足以建立拓扑模板，当前是手机端模型候选，请人工复核。"}`);
     } catch (error) {
       setBusy(false);
       const detail = error instanceof Error ? error.message : String(error);
@@ -582,7 +634,7 @@ export function GeometryWorkspace() {
   return <main className="app-shell">
     <header className="topbar">
       <div><span className="eyebrow">本地处理 · 不上传题图</span><h1>几何图校对器</h1></div>
-      <span className={`version gpu-state ${mobileStatus.ready ? "ready" : "offline"}`}><i />{mobileStatus.ready ? `${mobileStatus.deviceLabel} · ${mobileStatus.backend === "webgpu" ? "WebGPU" : "CPU/WASM"} · 题图不上传` : `${mobileStatus.deviceLabel} · 首次识别加载模型`}</span>
+      <span className={`version gpu-state ${mobileStatus.ready ? "ready" : "offline"}`}><i />{mobileStatus.ready ? `${mobileStatus.deviceLabel} · ${mobileStatus.backend === "webgpu" ? "WebGPU" : mobileStatus.backend === "wasm" ? "CPU/WASM" : "传统视觉后备"} · 题图不上传` : `${mobileStatus.deviceLabel} · 首次识别加载模型`}</span>
     </header>
 
     <section className="intro-card">

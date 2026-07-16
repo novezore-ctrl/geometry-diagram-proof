@@ -21,10 +21,15 @@ def pair(first: str, second: str) -> tuple[str, str]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True)
+    parser.add_argument(
+        "--image",
+        required=True,
+        help="Path to a locally owned/authorized Figure 2 photo (not redistributed by this repository).",
+    )
     args = parser.parse_args()
     root = ROOT
     expected = json.loads((root / "tests/fixtures/figure2_expected.json").read_text(encoding="utf-8"))
-    with Image.open(root / "tests/fixtures/figure2_photo.jpg") as source:
+    with Image.open(Path(args.image).expanduser().resolve()) as source:
         image = source.convert("RGB")
     runtime = GPUInferenceRuntime(args.checkpoint, memory_fraction=0.25)
     graph = runtime.infer(image, expected["questionText"])
