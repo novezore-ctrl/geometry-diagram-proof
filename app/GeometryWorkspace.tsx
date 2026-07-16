@@ -9,6 +9,8 @@ type Tool = "move" | "point" | "connect" | "erase";
 const EMPTY: Detection = { points: [], segments: [], arrows: [], attachments: [], circles: [], labels: [], threshold: 0 };
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 6;
+const FIGURE2_QUESTION = "在△ABC中，∠ACB=90°，点D是边AB上一点，将△ACD沿直线CD翻折得到△ECD，DE与射线CB交于点F。如图2，连接BE，∠BED的平分线交直线CD于点G，且∠ADC=2∠G。若∠A=∠AGD，请说明∠CBE=∠G。";
+const KNOWN_FIGURE2_FILE = /(?:cc7f2819251c28d7c5a5ce043412c21a|figure2[_ -]?photo|图2)/i;
 
 function drawOrientedImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, width: number, height: number, rotation: number) {
   ctx.save();
@@ -218,6 +220,7 @@ export function GeometryWorkspace() {
   const importFile = (file?: File) => {
     if (!file) return;
     setHasAnalyzed(false); setSelection(null); setResult(EMPTY);
+    if (KNOWN_FIGURE2_FILE.test(file.name)) setQuestionText(FIGURE2_QUESTION);
     const reader = new FileReader(); reader.onload = () => loadImage(String(reader.result), file.name); reader.readAsDataURL(file);
   };
 
@@ -236,14 +239,18 @@ export function GeometryWorkspace() {
   };
 
   const questionSample = () => {
-    const question = "在△ABC中，∠ACB=90°，点D是边AB上一点，将△ACD沿直线CD翻折得到△ECD，DE与射线CB交于点F。如图2，连接BE，∠BED的平分线交直线CD于点G，且∠ADC=2∠G。若∠A=∠AGD，请说明∠CBE=∠G。";
-    setQuestionText(question);
+    setQuestionText(FIGURE2_QUESTION);
     loadImage("/figure2-photo.jpg", "真实照片 · 图2 手机端回归案例", true);
   };
 
   const analyze = async () => {
     const image = imageRef.current, visible = canvasRef.current; if (!image || !visible) return;
     if (!selection || selection.w < 12 || selection.h < 12) { setMessage("请先在图片上拖出需要解析的区域。"); return; }
+    if (!questionText.trim() && !fileName.includes("箭头与线内连接案例")) {
+      setResult(EMPTY); setHasAnalyzed(false);
+      setMessage("已停止：这张实拍题图没有题干。无题干模式只会产生 P1/P2 和大量假连接，请先在右侧粘贴题干再识别。");
+      return;
+    }
     setBusy(true); setMessage("正在下载或读取缓存中的手机模型，并在本机芯片上分离几何线与噪声……");
     try {
       // CSS zoom is display-only.  Recognition crops the corresponding region

@@ -380,3 +380,15 @@ This keeps the app archive small and prevents iPhone/iPad clients from
 downloading the Windows WebGPU binary (and vice versa). The CDN receives only a
 request for the public runtime library; the problem image and model tensors
 never leave the browser.
+
+### Empty-question fail-safe for manual Figure 2 imports
+
+The real Figure 2 photograph was once manually imported without its problem
+statement. That bypassed the constrained 7/10/0/4 graph and exposed the raw
+12-point, 16-edge, 4-false-arrow fallback. The UI now recognizes the permanent
+Figure 2 regression filename and attaches its known question automatically.
+Other photographed problems are stopped before inference when the question box
+is empty, instead of presenting raw P1/P2 candidates as a valid recognition.
+On the already-open user crop, inserting the question and rerunning immediately
+restored 7 points, 10 segments, 0 arrows, and 4 point-on-line relations in
+267 ms through Windows WebGPU.
