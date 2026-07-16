@@ -350,8 +350,9 @@ One URL now selects the runtime automatically:
   Windows CPU/WASM;
 - compatible Android Chromium prefers phone WebGPU and falls back to phone
   CPU/WASM;
-- the first run downloads the model and selected ONNX Runtime files; later
-  loads can use the service-worker cache;
+- the first run downloads the 2.2 MB model from this site and only the selected
+  ONNX Runtime 1.27.0 binary from a version-pinned CDN; later loads can use the
+  browser cache;
 - `ml/serve.py` and `scripts/start_gpu_inference.ps1` remain only as optional
   desktop diagnostics and are not imported or contacted by the production UI.
 
@@ -373,3 +374,9 @@ acceptance.
 This proves the browser-side execution path is independent of the PC CUDA
 service. Apple Neural Engine access is not claimed by the web build; a native
 Core ML app would be required for that accelerator.
+
+The runtime binaries are intentionally not packaged into the Sites deployment.
+This keeps the app archive small and prevents iPhone/iPad clients from
+downloading the Windows WebGPU binary (and vice versa). The CDN receives only a
+request for the public runtime library; the problem image and model tensors
+never leave the browser.

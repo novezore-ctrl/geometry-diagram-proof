@@ -115,3 +115,8 @@ no selected image is sent to port 8765 or another inference API. Both WebGPU
 and WASM regressions remain 7 points, 10 segments, 0 arrows, and 4 point-on-line
 relations with the PC GPU service stopped. Apple Neural Engine use would
 require a separate native Core ML application and is not claimed here.
+
+The ONNX Runtime 1.27.0 `.mjs` and `.wasm` files are loaded from a
+version-pinned CDN so each platform downloads only its selected backend. The
+U-Net model remains a same-origin static asset, and image pixels are never sent
+to the CDN or an inference service.

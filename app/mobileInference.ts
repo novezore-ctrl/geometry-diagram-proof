@@ -3,6 +3,7 @@ import { detectDiagram, type Detection } from "./vision";
 
 const MODEL_SIZE = 320;
 const MODEL_URL = "/models/geometry_unet_pgdp5k_epoch5_320.onnx";
+const ORT_RUNTIME_BASE = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist";
 
 export type MobileBackend = "webgpu" | "wasm";
 export type MobileInferenceStatus = {
@@ -41,9 +42,9 @@ async function configureWasm(ort: OrtModule, variant: "asyncify" | "plain") {
   ort.env.wasm.numThreads = 1;
   ort.env.wasm.proxy = false;
   const suffix = variant === "asyncify" ? ".asyncify" : "";
-  const mjs = new URL(`/ort/ort-wasm-simd-threaded${suffix}.mjs`, window.location.href).href;
-  const wasm = new URL(`/ort/ort-wasm-simd-threaded${suffix}.wasm`, window.location.href).href;
-  const response = await fetch(wasm);
+  const mjs = `${ORT_RUNTIME_BASE}/ort-wasm-simd-threaded${suffix}.mjs`;
+  const wasm = `${ORT_RUNTIME_BASE}/ort-wasm-simd-threaded${suffix}.wasm`;
+  const response = await fetch(wasm, { mode: "cors", cache: "force-cache" });
   if (!response.ok) throw new Error(`无法下载手机运行库（${response.status}）`);
   // Passing the bytes explicitly avoids WebAssembly.compileStreaming MIME
   // problems on lightweight local servers that label .wasm as octet-stream.
