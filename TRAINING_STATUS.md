@@ -405,3 +405,26 @@ screen size stays constant while the source image is enlarged.
 The production build and live Windows browser test passed at 100% and 249%.
 Figure 2 remained at 7 points, 10 segments, 0 arrows, and 4 point-on-line
 relations, and the browser produced no console errors.
+
+### Multimodal source-image sharing (`geometry-diagram/v4`)
+
+The GPT share action now treats the original problem image as the visual source
+of truth instead of copying text alone. Desktop browsers first write one rich
+clipboard item containing both `image/png` and `text/plain`. The PNG is a clean,
+currently oriented copy of the source photograph without correction overlays.
+On platforms that reject mixed clipboard formats, the app falls back to the
+system share sheet with `geometry-original.png`, the v4 JSON file, and the same
+instruction text. A text-only last resort explicitly warns the user to attach
+the image manually instead of claiming that an image was sent.
+
+The v4 prompt tells GPT that the detailed point, segment, collinearity, and JSON
+description exists to improve its understanding of the original figure rather
+than replace it. GPT is explicitly required to use its own multimodal vision,
+combine visual evidence with the problem statement and corrected structure,
+and report when the image is missing or conflicts with the description.
+
+The Windows browser completed the mixed image-and-text clipboard branch for the
+Figure 2 regression case (7 points, 10 segments, 0 arrows, 4 point-on-line
+relations) with no console errors. Physical iPhone/iPad share-sheet acceptance
+still depends on the installed Safari/iOS version and remains a device-side
+acceptance item.

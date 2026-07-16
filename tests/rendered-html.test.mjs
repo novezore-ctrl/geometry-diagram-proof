@@ -22,7 +22,7 @@ test("server-renders the geometry workspace", async () => {
   assert.match(html, /点 \d+/);
   assert.match(html, /人工校正/);
   assert.match(html, /题干（与图一起分享）/);
-  assert.match(html, /复制题干 \+ 图形结构给 GPT/);
+  assert.match(html, /复制原图 \+ 题干 \+ 结构说明给 GPT/);
   assert.match(html, /全部线段必画/);
   assert.match(html, /电脑滚轮缩放/);
   assert.match(html, /手机\/平板双指缩放并移动/);

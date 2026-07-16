@@ -5,6 +5,7 @@ export type GeometryShareContext = {
   questionText?: string;
   confirmedArrowIds?: string[];
   confirmedCircleIds?: string[];
+  sourceImageAttached?: boolean;
 };
 
 const rounded = (value: number) => Math.round(value * 1000) / 1000;
@@ -109,8 +110,14 @@ export function buildGeometryDocument(result: Detection, context: GeometryShareC
     }));
 
   return {
-    schema: "geometry-diagram/v3",
-    purpose: "供 GPT 联合题干理解经过用户校正的几何题配图；这不是题目证明结论",
+    schema: "geometry-diagram/v4",
+    purpose: "随原始题图提供详细的辅助说明，供 GPT 使用多模态看图能力联合题干理解几何图形；这不是题目证明结论",
+    sourceImage: {
+      attachedWithThisShare: context.sourceImageAttached === true,
+      role: "原始题图是视觉主输入；题干和结构说明用于帮助 GPT 更准确地消除点、线、交点与几何关系的歧义，不能替代看图。",
+      multimodalInstruction: "必须先使用自身的多模态视觉能力观察原始题图，再把视觉观察与题干、人工校正结构联合理解。",
+      missingImageRule: "如果实际没有收到或无法看见原始题图，必须明确说明并要求用户补图，不得假装已经看图。",
+    },
     questionContext: {
       figureRole: "这是某道几何题中的一个配图，不是脱离题干的独立示意图",
       title: context.questionTitle?.trim() || null,
@@ -191,7 +198,9 @@ export function buildGeometryDocument(result: Detection, context: GeometryShareC
       "没有题干文字或人工确认时，不从图形外观推断垂直、平行、等长、等角或精确比例。",
     ],
     instructionsForGpt: [
-      "把题干与该 JSON 当作同一道题的两个互补输入，不得只看 JSON，也不得只凭图片外观。",
+      "以下详细说明的目的，是帮助你更准确地理解原始题图中的几何图形，不是用文字或 JSON 替代原图。",
+      "必须使用自身的多模态看图能力先观察原始题图，再把视觉观察、题干与该 JSON 当作同一道题的互补输入联合理解。",
+      "如果实际没有收到或看不到原图，必须先明确说明并要求补图，不得假装已经看图。",
       "先复述题干显式条件，再复述 points、segments、collinearChains 和 attachments，并检查二者能否相互解释。",
       "重绘时必须逐条画出 drawingContract.mustRenderSegmentPairs；画完后再逐条自检，不能出现清单有 E—G 而图上没有 E—G 的情况。",
       "只有 user_confirmed_division 才是精确等分条件；approximate_location 不能当作中点或精确比例。",
@@ -202,8 +211,16 @@ export function buildGeometryDocument(result: Detection, context: GeometryShareC
 
 export function toGptShareText(result: Detection, context: GeometryShareContext = {}) {
   const document = buildGeometryDocument(result, context);
+  const imageNotice = context.sourceImageAttached
+    ? "随本内容附带了这道题的原始题图。"
+    : "本说明必须与这道题的原始题图一起使用；如果当前消息没有附图，请先要求用户补图。";
   const lines = [
-    "这是某道几何题中的一个配图。请把下面的题干和校正后的图形结构作为同一道题联合理解。",
+    "【给 GPT 的多模态理解说明】",
+    imageNotice,
+    "以下题干、点线连接、共线顺序和结构化 JSON，是为了帮助你更准确地理解原始题图中的几何图形，不是用文字说明或 JSON 替代原图。",
+    "请务必利用你自身的多模态看图能力先观察原始题图，再把视觉观察与下面的详细描述结合起来理解题目；不得只读说明或只看 JSON。",
+    "如果你没有实际收到或看不到原始题图，请先明确说明并要求用户补图，不得假装已经看图。",
+    "这是某道几何题中的一个配图。请把原始题图、下面的题干和校正后的图形结构作为同一道题联合理解。",
     "题干中的显式条件优先于视觉外观；结构化图形负责说明点、线和交点怎样连接。若二者冲突，请先指出冲突，不要静默修改。",
     "",
     "题干：",
