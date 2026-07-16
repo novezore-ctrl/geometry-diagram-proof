@@ -1,4 +1,4 @@
-const CACHE = "geometry-proof-v1";
+const CACHE = "geometry-proof-mobile-v3";
 const CORE = ["/", "/manifest.webmanifest"];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(CORE)));

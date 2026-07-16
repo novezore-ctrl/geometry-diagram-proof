@@ -1,0 +1,16 @@
+{
+  "name": "photographed Figure 2 with handwriting and angle marks",
+  "questionText": "在△ABC中，∠ACB=90°，点D是边AB上一点，将△ACD沿直线CD翻折得到△ECD，DE与射线CB交于点F。如图2，连接BE，∠BED的平分线交直线CD于点G，且∠ADC=2∠G。若∠A=∠AGD，请说明∠CBE=∠G。",
+  "points": ["A", "B", "C", "D", "E", "F", "G"],
+  "segments": [
+    ["E", "G"], ["B", "C"], ["B", "D"], ["D", "A"], ["C", "D"],
+    ["D", "G"], ["C", "A"], ["E", "D"], ["B", "E"], ["E", "C"]
+  ],
+  "arrows": 0,
+  "attachments": [
+    {"junction": "D", "host": ["A", "B"]},
+    {"junction": "D", "host": ["C", "G"]},
+    {"junction": "F", "host": ["B", "C"]},
+    {"junction": "F", "host": ["E", "D"]}
+  ]
+}
