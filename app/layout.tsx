@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "几何图校对器",
-  description: "在设备本地识别印刷二维几何图中的点、线、圆和标签候选，并人工校正连接关系。",
+  description: "在设备本地校正几何题配图，把原题图片和人工校正后的图形结构说明分享给 GPT，由 GPT 直接从原图读取题干。",
   manifest: "/manifest.webmanifest",
 };
 

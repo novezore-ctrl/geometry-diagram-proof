@@ -17,10 +17,22 @@ test("server-renders the geometry workspace", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<title>几何图校对器<\/title>/);
-  assert.match(html, /第一版只解决三件事/);
+  assert.match(html, /原题图片 \+ 图形结构说明/);
   assert.match(html, /开始识别/);
   assert.match(html, /点 \d+/);
   assert.match(html, /人工校正/);
+  assert.match(html, /本地识别提示（不会发给 GPT）/);
+  assert.match(html, /① 复制原题图片/);
+  assert.match(html, /② 复制图形结构说明/);
+  assert.match(html, /系统分享原图 \+ 说明/);
+  assert.match(html, /全部线段核对/);
+  assert.match(html, /电脑滚轮缩放/);
+  assert.match(html, /手机\/平板双指缩放并移动/);
+  assert.match(html, /适应画布/);
+  assert.match(html, /向左旋转90度/);
+  assert.match(html, /向右旋转90度/);
+  assert.match(html, /清除全部识别/);
+  assert.match(html, /临时编号/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/);
 });
 

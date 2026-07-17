@@ -1,0 +1,475 @@
+{
+  "checkpoint": "ml/checkpoints/geometry_unet_pgdp5k_gpu.pt",
+  "checkpoint_sha256": "fe8784773d43f9e04aba9a6257386f3dcbdb630a90aab81e405d58d3e8879828",
+  "checkpoint_epoch": 5,
+  "data": "data/pgdp5k/processed",
+  "split": "test",
+  "images": 1000,
+  "batch_size": 16,
+  "num_workers": 2,
+  "model_size": [
+    320,
+    320
+  ],
+  "device": "NVIDIA GeForce RTX 5060 Laptop GPU",
+  "elapsed_seconds": 15.557,
+  "peak_allocated_vram_gib": 1.521,
+  "pixel_accuracy": 0.983167,
+  "mean_iou_present_classes": 0.652959,
+  "classes": {
+    "background": {
+      "precision": 0.998697,
+      "recall": 0.984534,
+      "iou": 0.983271,
+      "actual_pixels": 100252526
+    },
+    "solid_line": {
+      "precision": 0.539047,
+      "recall": 0.928956,
+      "iou": 0.517705,
+      "actual_pixels": 1496536
+    },
+    "dashed_line": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "iou": 0.0,
+      "actual_pixels": 0
+    },
+    "circle_or_ellipse": {
+      "precision": 0.560995,
+      "recall": 0.904029,
+      "iou": 0.529463,
+      "actual_pixels": 343667
+    },
+    "point": {
+      "precision": 0.626496,
+      "recall": 0.889827,
+      "iou": 0.581398,
+      "actual_pixels": 307271
+    },
+    "text": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "iou": 0.0,
+      "actual_pixels": 0
+    }
+  },
+  "topology": {
+    "basis": "mask-derived proxy graph at 320x320; not direct scoring against original annotation relations",
+    "point_tolerance_pixels": 10.0,
+    "line_support_threshold": 0.58,
+    "point_tp": 5577,
+    "point_fp": 650,
+    "point_fn": 142,
+    "edge_tp": 6595,
+    "edge_fp": 2206,
+    "edge_fn": 470,
+    "point_precision": 0.895616,
+    "point_recall": 0.97517,
+    "edge_precision": 0.749347,
+    "edge_recall": 0.933475,
+    "exact_graph_rate": 0.301
+  },
+  "sample_failures": [
+    {
+      "image": "test_3599.png",
+      "errors": 31,
+      "point_tp": 6,
+      "point_fp": 7,
+      "point_fn": 1,
+      "edge_tp": 5,
+      "edge_fp": 16,
+      "edge_fn": 7
+    },
+    {
+      "image": "test_598.png",
+      "errors": 30,
+      "point_tp": 12,
+      "point_fp": 0,
+      "point_fn": 5,
+      "edge_tp": 18,
+      "edge_fp": 1,
+      "edge_fn": 24
+    },
+    {
+      "image": "test_3191.png",
+      "errors": 29,
+      "point_tp": 16,
+      "point_fp": 0,
+      "point_fn": 0,
+      "edge_tp": 9,
+      "edge_fp": 29,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_717.png",
+      "errors": 29,
+      "point_tp": 7,
+      "point_fp": 3,
+      "point_fn": 3,
+      "edge_tp": 4,
+      "edge_fp": 16,
+      "edge_fn": 7
+    },
+    {
+      "image": "test_3112.png",
+      "errors": 28,
+      "point_tp": 9,
+      "point_fp": 0,
+      "point_fn": 3,
+      "edge_tp": 10,
+      "edge_fp": 2,
+      "edge_fn": 23
+    },
+    {
+      "image": "test_4828.png",
+      "errors": 26,
+      "point_tp": 5,
+      "point_fp": 7,
+      "point_fn": 0,
+      "edge_tp": 6,
+      "edge_fp": 19,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_1910.png",
+      "errors": 24,
+      "point_tp": 20,
+      "point_fp": 0,
+      "point_fn": 0,
+      "edge_tp": 48,
+      "edge_fp": 24,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_2166.png",
+      "errors": 24,
+      "point_tp": 4,
+      "point_fp": 11,
+      "point_fn": 0,
+      "edge_tp": 4,
+      "edge_fp": 13,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_4449.png",
+      "errors": 23,
+      "point_tp": 3,
+      "point_fp": 9,
+      "point_fn": 1,
+      "edge_tp": 3,
+      "edge_fp": 10,
+      "edge_fn": 3
+    },
+    {
+      "image": "test_4661.png",
+      "errors": 22,
+      "point_tp": 8,
+      "point_fp": 5,
+      "point_fn": 4,
+      "edge_tp": 5,
+      "edge_fp": 0,
+      "edge_fn": 13
+    },
+    {
+      "image": "test_1012.png",
+      "errors": 21,
+      "point_tp": 7,
+      "point_fp": 2,
+      "point_fn": 4,
+      "edge_tp": 10,
+      "edge_fp": 5,
+      "edge_fn": 10
+    },
+    {
+      "image": "test_3293.png",
+      "errors": 21,
+      "point_tp": 13,
+      "point_fp": 3,
+      "point_fn": 2,
+      "edge_tp": 10,
+      "edge_fp": 7,
+      "edge_fn": 9
+    },
+    {
+      "image": "test_3838.png",
+      "errors": 21,
+      "point_tp": 10,
+      "point_fp": 0,
+      "point_fn": 2,
+      "edge_tp": 6,
+      "edge_fp": 16,
+      "edge_fn": 3
+    },
+    {
+      "image": "test_235.png",
+      "errors": 20,
+      "point_tp": 6,
+      "point_fp": 4,
+      "point_fn": 4,
+      "edge_tp": 4,
+      "edge_fp": 5,
+      "edge_fn": 7
+    },
+    {
+      "image": "test_4260.png",
+      "errors": 20,
+      "point_tp": 8,
+      "point_fp": 0,
+      "point_fn": 4,
+      "edge_tp": 13,
+      "edge_fp": 1,
+      "edge_fn": 15
+    },
+    {
+      "image": "test_4410.png",
+      "errors": 20,
+      "point_tp": 8,
+      "point_fp": 6,
+      "point_fn": 1,
+      "edge_tp": 11,
+      "edge_fp": 9,
+      "edge_fn": 4
+    },
+    {
+      "image": "test_4988.png",
+      "errors": 20,
+      "point_tp": 7,
+      "point_fp": 7,
+      "point_fn": 0,
+      "edge_tp": 6,
+      "edge_fp": 13,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_1438.png",
+      "errors": 19,
+      "point_tp": 11,
+      "point_fp": 1,
+      "point_fn": 2,
+      "edge_tp": 10,
+      "edge_fp": 7,
+      "edge_fn": 9
+    },
+    {
+      "image": "test_714.png",
+      "errors": 19,
+      "point_tp": 8,
+      "point_fp": 6,
+      "point_fn": 0,
+      "edge_tp": 5,
+      "edge_fp": 13,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_1971.png",
+      "errors": 18,
+      "point_tp": 9,
+      "point_fp": 4,
+      "point_fn": 0,
+      "edge_tp": 15,
+      "edge_fp": 12,
+      "edge_fn": 2
+    },
+    {
+      "image": "test_3275.png",
+      "errors": 18,
+      "point_tp": 5,
+      "point_fp": 0,
+      "point_fn": 4,
+      "edge_tp": 8,
+      "edge_fp": 2,
+      "edge_fn": 12
+    },
+    {
+      "image": "test_710.png",
+      "errors": 18,
+      "point_tp": 5,
+      "point_fp": 6,
+      "point_fn": 0,
+      "edge_tp": 10,
+      "edge_fp": 12,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_910.png",
+      "errors": 18,
+      "point_tp": 4,
+      "point_fp": 7,
+      "point_fn": 0,
+      "edge_tp": 6,
+      "edge_fp": 11,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_1078.png",
+      "errors": 17,
+      "point_tp": 15,
+      "point_fp": 1,
+      "point_fn": 1,
+      "edge_tp": 8,
+      "edge_fp": 7,
+      "edge_fn": 8
+    },
+    {
+      "image": "test_3524.png",
+      "errors": 17,
+      "point_tp": 5,
+      "point_fp": 3,
+      "point_fn": 1,
+      "edge_tp": 3,
+      "edge_fp": 11,
+      "edge_fn": 2
+    },
+    {
+      "image": "test_1545.png",
+      "errors": 16,
+      "point_tp": 4,
+      "point_fp": 5,
+      "point_fn": 1,
+      "edge_tp": 5,
+      "edge_fp": 8,
+      "edge_fn": 2
+    },
+    {
+      "image": "test_2147.png",
+      "errors": 16,
+      "point_tp": 13,
+      "point_fp": 0,
+      "point_fn": 0,
+      "edge_tp": 16,
+      "edge_fp": 16,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_2464.png",
+      "errors": 16,
+      "point_tp": 13,
+      "point_fp": 0,
+      "point_fn": 0,
+      "edge_tp": 16,
+      "edge_fp": 16,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_3032.png",
+      "errors": 16,
+      "point_tp": 12,
+      "point_fp": 8,
+      "point_fn": 0,
+      "edge_tp": 4,
+      "edge_fp": 8,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_3223.png",
+      "errors": 16,
+      "point_tp": 12,
+      "point_fp": 0,
+      "point_fn": 0,
+      "edge_tp": 10,
+      "edge_fp": 16,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_3310.png",
+      "errors": 16,
+      "point_tp": 7,
+      "point_fp": 8,
+      "point_fn": 0,
+      "edge_tp": 8,
+      "edge_fp": 8,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_3630.png",
+      "errors": 16,
+      "point_tp": 10,
+      "point_fp": 1,
+      "point_fn": 2,
+      "edge_tp": 0,
+      "edge_fp": 13,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_4839.png",
+      "errors": 16,
+      "point_tp": 13,
+      "point_fp": 0,
+      "point_fn": 2,
+      "edge_tp": 16,
+      "edge_fp": 3,
+      "edge_fn": 11
+    },
+    {
+      "image": "test_1838.png",
+      "errors": 15,
+      "point_tp": 5,
+      "point_fp": 8,
+      "point_fn": 0,
+      "edge_tp": 6,
+      "edge_fp": 7,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_2565.png",
+      "errors": 15,
+      "point_tp": 11,
+      "point_fp": 0,
+      "point_fn": 0,
+      "edge_tp": 3,
+      "edge_fp": 15,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_3033.png",
+      "errors": 15,
+      "point_tp": 10,
+      "point_fp": 1,
+      "point_fn": 1,
+      "edge_tp": 8,
+      "edge_fp": 11,
+      "edge_fn": 2
+    },
+    {
+      "image": "test_4549.png",
+      "errors": 15,
+      "point_tp": 5,
+      "point_fp": 6,
+      "point_fn": 0,
+      "edge_tp": 5,
+      "edge_fp": 9,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_581.png",
+      "errors": 15,
+      "point_tp": 5,
+      "point_fp": 6,
+      "point_fn": 0,
+      "edge_tp": 10,
+      "edge_fp": 9,
+      "edge_fn": 0
+    },
+    {
+      "image": "test_784.png",
+      "errors": 15,
+      "point_tp": 11,
+      "point_fp": 3,
+      "point_fn": 1,
+      "edge_tp": 9,
+      "edge_fp": 8,
+      "edge_fn": 3
+    },
+    {
+      "image": "test_1739.png",
+      "errors": 14,
+      "point_tp": 5,
+      "point_fp": 4,
+      "point_fn": 1,
+      "edge_tp": 8,
+      "edge_fp": 6,
+      "edge_fn": 3
+    }
+  ]
+}

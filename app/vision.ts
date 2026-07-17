@@ -1,9 +1,68 @@
-export type PointNode = { id: string; label: string; x: number; y: number; confidence: number; source: "detected" | "manual" };
-export type SegmentEdge = { id: string; a: string; b: string; confidence: number; source: "detected" | "manual" };
-export type CircleNode = { id: string; cx: number; cy: number; r: number; confidence: number; source: "detected" | "manual" };
+export type CandidateSource = "detected" | "question_constrained" | "manual";
+export type PointNode = { id: string; label: string; x: number; y: number; confidence: number; source: CandidateSource };
+export type SegmentEdge = { id: string; a: string; b: string; confidence: number; source: CandidateSource };
+export type CircleNode = { id: string; cx: number; cy: number; r: number; confidence: number; source: CandidateSource };
 export type LabelBox = { id: string; x: number; y: number; w: number; h: number; nearPoint?: string };
-export type Detection = { points: PointNode[]; segments: SegmentEdge[]; circles: CircleNode[]; labels: LabelBox[]; threshold: number };
+export type ArrowTip = {
+  id: string;
+  x: number;
+  y: number;
+  tailX: number;
+  tailY: number;
+  directionX: number;
+  directionY: number;
+  fromPoint?: string;
+  confidence: number;
+  source: CandidateSource;
+};
+export type AttachmentPosition =
+  | { kind: "approximate"; approximateT: number; coordinateUncertain: true }
+  | { kind: "division"; parts: number; index: number; coordinateUncertain: false };
+export type AttachmentRelation = {
+  id: string;
+  kind: "point_on_segment" | "branch_attachment";
+  junction: string;
+  hostA: string;
+  hostB: string;
+  branch?: string;
+  position: AttachmentPosition;
+  confidence: number;
+  source: CandidateSource;
+  support: "collinear_points" | "topology" | "remembered" | "question_and_collinearity";
+};
+export type Detection = {
+  points: PointNode[];
+  segments: SegmentEdge[];
+  arrows: ArrowTip[];
+  attachments: AttachmentRelation[];
+  circles: CircleNode[];
+  labels: LabelBox[];
+  threshold: number;
+};
 type Line = { theta: number; x1: number; y1: number; x2: number; y2: number; confidence: number };
+type ArrowCandidate = ArrowTip & { lineIndex: number };
+
+export const DETECTOR_REFERENCE_EDGE = 760;
+export function detectorRasterSize(width: number, height: number) {
+  // The detector thresholds are calibrated in a fixed pixel space. Normalize
+  // both large and small selections so a small diagram inside a full page is
+  // enlarged for recognition.
+  const scale = DETECTOR_REFERENCE_EDGE / Math.max(1, width, height);
+  return { width: Math.max(12, Math.round(width * scale)), height: Math.max(12, Math.round(height * scale)), scale };
+}
+
+export function viewportToCanvasPoint(
+  clientX: number,
+  clientY: number,
+  rect: { left: number; top: number; width: number; height: number },
+  canvasWidth: number,
+  canvasHeight: number,
+) {
+  return {
+    x: (clientX - rect.left) / Math.max(1, rect.width) * canvasWidth,
+    y: (clientY - rect.top) / Math.max(1, rect.height) * canvasHeight,
+  };
+}
 
 const dist = (ax: number, ay: number, bx: number, by: number) => Math.hypot(ax - bx, ay - by);
 
@@ -76,7 +135,11 @@ function detectLines(binary: Uint8Array, width: number, height: number) {
       const angle = Math.min(Math.abs(other.theta - line.theta), 180 - Math.abs(other.theta - line.theta));
       const direct = dist(other.x1, other.y1, line.x1, line.y1) + dist(other.x2, other.y2, line.x2, line.y2);
       const reverse = dist(other.x1, other.y1, line.x2, line.y2) + dist(other.x2, other.y2, line.x1, line.y1);
-      return angle < 5 && Math.min(direct, reverse) < 36;
+      const lineMidX = (line.x1 + line.x2) / 2, lineMidY = (line.y1 + line.y2) / 2;
+      const otherMidX = (other.x1 + other.x2) / 2, otherMidY = (other.y1 + other.y2) / 2;
+      const sameStroke = pointToLine(lineMidX, lineMidY, other).distance < 7
+        && pointToLine(otherMidX, otherMidY, line).distance < 7;
+      return angle < 5 && (Math.min(direct, reverse) < 36 || sameStroke);
     });
     if (!duplicate) lines.push(line);
     if (lines.length === 12) break;
@@ -84,7 +147,76 @@ function detectLines(binary: Uint8Array, width: number, height: number) {
   return lines;
 }
 
+function pointToLine(x: number, y: number, line: Line) {
+  const dx = line.x2 - line.x1, dy = line.y2 - line.y1, len2 = dx * dx + dy * dy || 1;
+  const t = ((x - line.x1) * dx + (y - line.y1) * dy) / len2;
+  const px = line.x1 + t * dx, py = line.y1 + t * dy;
+  return { t, distance: dist(x, y, px, py) };
+}
+
+function arrowScore(binary: Uint8Array, width: number, height: number, tipX: number, tipY: number, innerX: number, innerY: number) {
+  const length = dist(tipX, tipY, innerX, innerY) || 1;
+  const ux = (tipX - innerX) / length, uy = (tipY - innerY) / length;
+  const vx = -uy, vy = ux;
+  let left = 0, right = 0, maxSpread = 0, backwardDepth = 0;
+  const radius = 22;
+  for (let y = Math.max(0, Math.floor(tipY - radius)); y <= Math.min(height - 1, Math.ceil(tipY + radius)); y += 1) {
+    for (let x = Math.max(0, Math.floor(tipX - radius)); x <= Math.min(width - 1, Math.ceil(tipX + radius)); x += 1) {
+      if (!binary[y * width + x]) continue;
+      const rx = x - tipX, ry = y - tipY;
+      const along = rx * ux + ry * uy, across = rx * vx + ry * vy;
+      if (along < -21 || along > 5 || Math.abs(across) > 15) continue;
+      if (along < -2 && Math.abs(across) >= 3.2) {
+        if (across < 0) left += 1; else right += 1;
+        maxSpread = Math.max(maxSpread, Math.abs(across));
+        backwardDepth = Math.max(backwardDepth, -along);
+      }
+    }
+  }
+  const wings = left + right;
+  if (left < 5 || right < 5 || wings < 16 || maxSpread < 5.5 || backwardDepth < 8) return 0;
+  return Math.min(.98, .52 + Math.min(.2, wings / 150) + Math.min(.14, (maxSpread - 5) / 24) + Math.min(.1, (backwardDepth - 8) / 50));
+}
+
+function detectArrowTips(binary: Uint8Array, width: number, height: number, lines: Line[]) {
+  const candidates: ArrowCandidate[] = [];
+  lines.forEach((line, lineIndex) => {
+    const ends = [
+      { x: line.x1, y: line.y1, innerX: line.x2, innerY: line.y2 },
+      { x: line.x2, y: line.y2, innerX: line.x1, innerY: line.y1 },
+    ];
+    for (const end of ends) {
+      const joined = lines.some((other, otherIndex) => {
+        if (otherIndex === lineIndex) return false;
+        const hit = pointToLine(end.x, end.y, other);
+        return hit.t > -.06 && hit.t < 1.06 && hit.distance < 11;
+      });
+      if (joined) continue;
+      const score = arrowScore(binary, width, height, end.x, end.y, end.innerX, end.innerY);
+      if (!score) continue;
+      const length = dist(end.x, end.y, end.innerX, end.innerY) || 1;
+      const directionX = (end.x - end.innerX) / length, directionY = (end.y - end.innerY) / length;
+      candidates.push({
+        id: "", x: end.x, y: end.y, tailX: end.innerX, tailY: end.innerY,
+        directionX, directionY, confidence: Math.min(score, line.confidence + .2),
+        source: "detected", lineIndex,
+      });
+    }
+  });
+  candidates.sort((a, b) => b.confidence - a.confidence);
+  const output: ArrowCandidate[] = [];
+  for (const candidate of candidates) {
+    if (!output.some((arrow) => dist(arrow.x, arrow.y, candidate.x, candidate.y) < 18)) output.push(candidate);
+  }
+  return output.map((arrow, index) => ({ ...arrow, id: `A${index + 1}` }));
+}
+
 function intersection(a: Line, b: Line) {
+  const angle = Math.min(Math.abs(a.theta - b.theta), 180 - Math.abs(a.theta - b.theta));
+  // Slightly different Hough estimates of one thick/blurred printed line can
+  // cross near a real junction. Treat near-parallel estimates as one stroke,
+  // otherwise they manufacture a fan of duplicate intersection points.
+  if (angle < 7) return null;
   const d = (a.x1 - a.x2) * (b.y1 - b.y2) - (a.y1 - a.y2) * (b.x1 - b.x2);
   if (Math.abs(d) < .001) return null;
   const ca = a.x1 * a.y2 - a.y1 * a.x2, cb = b.x1 * b.y2 - b.y1 * b.x2;
@@ -94,19 +226,35 @@ function intersection(a: Line, b: Line) {
   return inside(a) && inside(b) ? { x, y } : null;
 }
 
-function topology(lines: Line[], width: number, height: number) {
+function topology(lines: Line[], arrows: ArrowCandidate[], width: number, height: number) {
   const raw: Array<{ x: number; y: number; confidence: number }> = [];
-  for (const line of lines) raw.push({ x: line.x1, y: line.y1, confidence: line.confidence }, { x: line.x2, y: line.y2, confidence: line.confidence });
+  for (const line of lines) {
+    for (const endpoint of [{ x: line.x1, y: line.y1 }, { x: line.x2, y: line.y2 }]) {
+      if (!arrows.some((arrow) => dist(arrow.x, arrow.y, endpoint.x, endpoint.y) < 18)) raw.push({ ...endpoint, confidence: line.confidence });
+    }
+  }
   for (let i = 0; i < lines.length; i += 1) for (let j = i + 1; j < lines.length; j += 1) {
     const hit = intersection(lines[i], lines[j]);
     if (hit && hit.x >= 0 && hit.x <= width && hit.y >= 0 && hit.y <= height) raw.push({ ...hit, confidence: Math.min(lines[i].confidence, lines[j].confidence) });
   }
-  const groups: Array<{ x: number; y: number; confidence: number; n: number }> = [];
-  for (const p of raw) {
-    const group = groups.find((g) => dist(g.x, g.y, p.x, p.y) < 12);
-    if (group) { group.x = (group.x * group.n + p.x) / (group.n + 1); group.y = (group.y * group.n + p.y) / (group.n + 1); group.confidence = Math.max(group.confidence, p.confidence); group.n += 1; }
-    else groups.push({ ...p, n: 1 });
+  // Merge by connected neighbourhood rather than a moving centroid. In a
+  // blurry photo, estimates of one junction form a short chain; centroid-first
+  // grouping can split the two ends into P5/P8/P13 even though every adjacent
+  // estimate belongs to the same physical point.
+  const parent = raw.map((_, index) => index);
+  const find = (index: number): number => parent[index] === index ? index : (parent[index] = find(parent[index]));
+  const union = (a: number, b: number) => { const rootA = find(a), rootB = find(b); if (rootA !== rootB) parent[rootB] = rootA; };
+  for (let i = 0; i < raw.length; i += 1) for (let j = i + 1; j < raw.length; j += 1) {
+    if (dist(raw[i].x, raw[i].y, raw[j].x, raw[j].y) < 18) union(i, j);
   }
+  const grouped = new Map<number, typeof raw>();
+  raw.forEach((point, index) => { const root = find(index), points = grouped.get(root) || []; points.push(point); grouped.set(root, points); });
+  const groups = Array.from(grouped.values()).map((members) => ({
+    x: members.reduce((sum, point) => sum + point.x, 0) / members.length,
+    y: members.reduce((sum, point) => sum + point.y, 0) / members.length,
+    confidence: Math.max(...members.map((point) => point.confidence)),
+    n: members.length,
+  }));
   // A true vertex is normally supported by at least two observations:
   // two line endpoints, or an endpoint plus an intersection. Single Hough
   // endpoints are usually text strokes and are intentionally discarded.
@@ -120,7 +268,105 @@ function topology(lines: Line[], width: number, height: number) {
       if (!segments.some((s) => (s.a === a && s.b === b) || (s.a === b && s.b === a))) segments.push({ id: `S${segments.length + 1}`, a, b, confidence: line.confidence, source: "detected" });
     }
   }
-  return { points, segments };
+  const resolvedArrows: ArrowTip[] = arrows.map(({ lineIndex, ...arrow }) => {
+    const line = lines[lineIndex];
+    const onShaft = points.map((point) => ({ point, metric: pointToLine(point.x, point.y, line) }))
+      .filter(({ point, metric }) => metric.t > -.08 && metric.t < 1.08 && metric.distance < 12 && dist(point.x, point.y, arrow.x, arrow.y) > 22)
+      .sort((a, b) => dist(a.point.x, a.point.y, arrow.tailX, arrow.tailY) - dist(b.point.x, b.point.y, arrow.tailX, arrow.tailY))[0]?.point;
+    return onShaft ? { ...arrow, fromPoint: onShaft.id } : arrow;
+  });
+  // Photographed triangle vertices and handwritten angle marks can resemble
+  // arrow wings. Keep only the strongest few machine candidates for review;
+  // unconfirmed candidates are excluded from export by the workspace.
+  resolvedArrows.sort((a, b) => b.confidence - a.confidence);
+  return { points, segments, arrows: resolvedArrows.slice(0, 4), attachments: deriveAttachments(points, segments) };
+}
+
+export function deriveAttachments(points: PointNode[], segments: SegmentEdge[], previous: AttachmentRelation[] = []) {
+  const byId = new Map(points.map((point) => [point.id, point]));
+  const edgeKey = (a: string, b: string) => [a, b].sort().join(":");
+  const edgeMap = new Map(segments.map((segment) => [edgeKey(segment.a, segment.b), segment]));
+  const locationKey = (junction: string, a: string, b: string) => `${junction}:${[a, b].sort().join(":")}`;
+  const previousByLocation = new Map(previous.map((item) => [locationKey(item.junction, item.hostA, item.hostB), item]));
+  const raw: Array<AttachmentRelation & { angle: number; hostLength: number }> = [];
+
+  // A connection location is a geometric relation between three collinear
+  // points, not a property of a degree-3 graph node. This keeps the relation
+  // valid when a user adds another point or draws one long segment through an
+  // existing point (for example P4 lying inside P3-P5).
+  for (let i = 0; i < points.length; i += 1) for (let j = i + 1; j < points.length; j += 1) {
+    const first = points[i], second = points[j];
+    const dx = second.x - first.x, dy = second.y - first.y, hostLength = Math.hypot(dx, dy);
+    if (hostLength < 24) continue;
+    for (const center of points) {
+      if (center.id === first.id || center.id === second.id) continue;
+      const t = ((center.x - first.x) * dx + (center.y - first.y) * dy) / (hostLength * hostLength);
+      if (t <= .035 || t >= .965) continue;
+      const projectedX = first.x + t * dx, projectedY = first.y + t * dy;
+      const offset = dist(center.x, center.y, projectedX, projectedY);
+      const tolerance = Math.max(7, Math.min(15, hostLength * .028));
+      if (offset > tolerance) continue;
+
+      const direct = edgeMap.get(edgeKey(first.id, second.id));
+      const firstHalf = edgeMap.get(edgeKey(first.id, center.id));
+      const secondHalf = edgeMap.get(edgeKey(center.id, second.id));
+      // A detected host line needs complete support: either one explicit long
+      // segment through the center, or both adjacent halves. Accepting only one
+      // half turns every accidental collinear point into many downstream
+      // "point on segment" relations in crowded photographs.
+      if (!direct && !(firstHalf && secondHalf)) continue;
+      const evidence = [direct, firstHalf, secondHalf].filter(Boolean) as SegmentEdge[];
+
+      const [hostA, hostB] = [first.id, second.id].sort();
+      const a = byId.get(hostA)!, b = byId.get(hostB)!;
+      const hostDx = b.x - a.x, hostDy = b.y - a.y, orderedLength = Math.hypot(hostDx, hostDy) || 1;
+      const approximateT = ((center.x - a.x) * hostDx + (center.y - a.y) * hostDy) / (orderedLength * orderedLength);
+      const key = locationKey(center.id, hostA, hostB), prior = previousByLocation.get(key);
+      const geometricConfidence = Math.max(.45, 1 - offset / tolerance);
+      raw.push({
+        id: `O:${key}`, kind: "point_on_segment", junction: center.id, hostA, hostB,
+        position: prior?.position.kind === "division" ? prior.position : { kind: "approximate", approximateT: Math.max(0, Math.min(1, approximateT)), coordinateUncertain: true },
+        confidence: Math.min(.99, geometricConfidence * .7 + Math.max(...evidence.map((edge) => edge.confidence)) * .3),
+        source: evidence.some((edge) => edge.source === "manual") || center.source === "manual" ? "manual" : "detected",
+        support: "collinear_points", angle: Math.atan2(hostDy, hostDx), hostLength,
+      });
+    }
+  }
+
+  // If several wider/narrower endpoint pairs describe the same line through
+  // one point, expose only the widest pair. Perpendicular lines remain separate.
+  raw.sort((a, b) => b.hostLength - a.hostLength);
+  const relations: AttachmentRelation[] = [];
+  for (const candidate of raw) {
+    const duplicateDirection = rawDirectionMatch(relations, candidate, byId);
+    if (!duplicateDirection) {
+      const { angle: _angle, hostLength: _hostLength, ...relation } = candidate;
+      void _angle; void _hostLength;
+      relations.push(relation);
+    }
+  }
+
+  // Preserve a user-confirmed relation if its points still exist, even while
+  // surrounding lines are being edited. It stays visibly marked for review.
+  for (const prior of previous) {
+    const exists = byId.has(prior.junction) && byId.has(prior.hostA) && byId.has(prior.hostB) && (!prior.branch || byId.has(prior.branch));
+    const alreadyPresent = relations.some((item) => locationKey(item.junction, item.hostA, item.hostB) === locationKey(prior.junction, prior.hostA, prior.hostB));
+    if (exists && !alreadyPresent && (prior.source === "manual" || prior.position.kind === "division")) relations.push({ ...prior, support: "remembered", confidence: Math.min(prior.confidence, .65) });
+  }
+  const automatic = relations.filter((relation) => relation.source !== "manual").sort((a, b) => b.confidence - a.confidence).slice(0, 8);
+  const manual = relations.filter((relation) => relation.source === "manual");
+  return [...manual, ...automatic];
+}
+
+function rawDirectionMatch(relations: AttachmentRelation[], candidate: AttachmentRelation, byId: Map<string, PointNode>) {
+  const candidateA = byId.get(candidate.hostA), candidateB = byId.get(candidate.hostB); if (!candidateA || !candidateB) return false;
+  const cdx = candidateB.x - candidateA.x, cdy = candidateB.y - candidateA.y, clen = Math.hypot(cdx, cdy) || 1;
+  return relations.some((relation) => {
+    if (relation.junction !== candidate.junction) return false;
+    const a = byId.get(relation.hostA), b = byId.get(relation.hostB); if (!a || !b) return false;
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+    return Math.abs((dx * cdx + dy * cdy) / (len * clen)) > .985;
+  });
 }
 
 function labelBoxes(binary: Uint8Array, width: number, height: number, points: PointNode[]) {
@@ -165,6 +411,6 @@ function circles(binary: Uint8Array, width: number, height: number) {
 }
 
 export function detectDiagram(image: ImageData): Detection {
-  const { binary, threshold } = binarize(image), lines = detectLines(binary, image.width, image.height), graph = topology(lines, image.width, image.height);
+  const { binary, threshold } = binarize(image), lines = detectLines(binary, image.width, image.height), arrows = detectArrowTips(binary, image.width, image.height, lines), graph = topology(lines, arrows, image.width, image.height);
   return { ...graph, labels: labelBoxes(binary, image.width, image.height, graph.points), circles: circles(binary, image.width, image.height), threshold };
 }
